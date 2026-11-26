@@ -4,7 +4,32 @@ import GazeCore
 import GazeDesign
 import GazeLockScreen
 import MetalKit
+import Synchronization
 import Testing
+
+private final class TrackingNotificationCenter: NotificationCenter, @unchecked Sendable {
+	private let activeIDs = Mutex<Set<ObjectIdentifier>>([])
+
+	var activeTokenCount: Int {
+		activeIDs.withLock { $0.count }
+	}
+
+	override func addObserver(
+		forName name: NSNotification.Name?,
+		object obj: Any?,
+		queue: OperationQueue?,
+		using block: @escaping @Sendable (Notification) -> Void
+	) -> any NSObjectProtocol {
+		let token = super.addObserver(forName: name, object: obj, queue: queue, using: block)
+		activeIDs.withLock { _ = $0.insert(ObjectIdentifier(token as AnyObject)) }
+		return token
+	}
+
+	override func removeObserver(_ observer: Any) {
+		activeIDs.withLock { _ = $0.remove(ObjectIdentifier(observer as AnyObject)) }
+		super.removeObserver(observer)
+	}
+}
 
 @Suite("Render Cache & Metal Redraw Efficiency")
 @MainActor
@@ -149,6 +174,49 @@ struct RenderCacheTests {
 		#expect(GazeCompanionRenderer.PausedRenderState(revision: 1, angle: 0.25, material: .pearl, opacity: 0.68) != base)
 		#expect(GazeCompanionRenderer.PausedRenderState(revision: 1, angle: 0.25, material: .ink, opacity: 0.68) != base)
 		#expect(GazeCompanionRenderer.PausedRenderState(revision: 1, angle: 0.25, material: .charcoal, opacity: 1.0) != base)
+		#expect(GazeCompanionRenderer.PausedRenderState(revision: 1, angle: 0.25, material: .charcoal, opacity: 0.68, pose: GazeCompanionPose(face: GazeFaceMotion.accepted.stillPose)) != base)
+	}
+
+	@Test func pausedRendererRedrawsWhenPausedPoseOrMotionChangesAtZeroRevision() {
+		let coordinator = GazeCompanionRenderer.Coordinator()
+		let view = TransparentFaceView(frame: CGRect(x: 0, y: 0, width: 120, height: 120), device: MTLCreateSystemDefaultDevice())
+		view.delegate = coordinator
+
+		func applyMotion(_ motion: GazeFaceMotion) {
+			let sampler: (TimeInterval) -> GazeCompanionPose = { _ in GazeCompanionPose(face: motion.stillPose) }
+			let renderer = GazeCompanionRenderer(
+				pose: sampler,
+				running: false,
+				revision: 0,
+				angle: 0.0,
+				material: .charcoal,
+				opacity: 0.68,
+				failure: { _ in }
+			)
+			renderer.applyStateForTesting(to: view, coordinator: coordinator)
+		}
+
+		// Initial resting pose draws once; repeats with identical still pose skip.
+		applyMotion(.resting)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 1)
+		applyMotion(.resting)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 1)
+
+		// Transitioning to .accepted under Reduce Motion / paused (revision stays 0) must redraw once.
+		applyMotion(.accepted)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 2)
+		applyMotion(.accepted)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 2)
+
+		// Transitioning to .rejected (expression: -1) with revision 0 must redraw once.
+		applyMotion(.rejected)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 3)
+		applyMotion(.rejected)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 3)
+
+		// Returning to .scanning (expression: 0) with revision 0 must redraw once.
+		applyMotion(.scanning)
+		#expect(coordinator.pausedDrawTriggerCountForTesting == 4)
 	}
 
 	@Test func pausedRendererSkipsRedundantDrawsForUnchangedStateAndRedrawsOnChange() {
@@ -272,5 +340,77 @@ struct RenderCacheTests {
 		#expect(registered.contains(NSWorkspace.screensDidWakeNotification))
 		#expect(registered.contains(NSWindow.didDeminiaturizeNotification))
 		#expect(registered.contains(NSWindow.didExposeNotification))
+	}
+
+	@Test func transparentFaceViewRemovesNotificationObserversOnDismantleAndDeinit() {
+		let localCenter = TrackingNotificationCenter()
+		let workspaceCenter = TrackingNotificationCenter()
+
+		// 1. dismantleNSView immediately unregisters all observers even if view remains in window.
+		do {
+			let coordinator = GazeCompanionRenderer.Coordinator()
+			let view = TransparentFaceView(
+				frame: CGRect(x: 0, y: 0, width: 120, height: 120),
+				device: MTLCreateSystemDefaultDevice(),
+				localNotificationCenter: localCenter,
+				workspaceNotificationCenter: workspaceCenter
+			)
+			let window = NSWindow(
+				contentRect: CGRect(x: 0, y: 0, width: 120, height: 120),
+				styleMask: [.borderless],
+				backing: .buffered,
+				defer: false
+			)
+			window.contentView = view
+			defer { window.contentView = nil }
+
+			#expect(localCenter.activeTokenCount == 5)
+			#expect(workspaceCenter.activeTokenCount == 1)
+			#expect(view.activeDisplayObserverCountForTesting == 6)
+
+			let restartsBefore = view.restartRenderingCountForTesting
+			workspaceCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+			#expect(view.restartRenderingCountForTesting == restartsBefore + 1)
+
+			GazeCompanionRenderer.dismantleNSView(view, coordinator: coordinator)
+
+			#expect(localCenter.activeTokenCount == 0)
+			#expect(workspaceCenter.activeTokenCount == 0)
+			#expect(view.activeDisplayObserverCountForTesting == 0)
+			#expect(view.observedNotificationNamesForTesting.isEmpty)
+
+			workspaceCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+			localCenter.post(name: NSWindow.didExposeNotification, object: window)
+			#expect(view.restartRenderingCountForTesting == restartsBefore + 1)
+		}
+
+		// 2. Direct teardown without viewDidMoveToWindow(nil) or dismantleNSView unregisters via deinit.
+		weak var weakView: TransparentFaceView?
+		autoreleasepool {
+			let window = NSWindow(
+				contentRect: CGRect(x: 0, y: 0, width: 120, height: 120),
+				styleMask: [.borderless],
+				backing: .buffered,
+				defer: false
+			)
+			window.isReleasedWhenClosed = false
+			let view = TransparentFaceView(
+				frame: CGRect(x: 0, y: 0, width: 120, height: 120),
+				device: MTLCreateSystemDefaultDevice(),
+				localNotificationCenter: localCenter,
+				workspaceNotificationCenter: workspaceCenter
+			)
+			weakView = view
+			window.contentView = view
+
+			#expect(localCenter.activeTokenCount == 5)
+			#expect(workspaceCenter.activeTokenCount == 1)
+			// Window & view drop at end of autoreleasepool without clearing contentView or calling dismantleNSView.
+		}
+		RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+
+		#expect(weakView == nil)
+		#expect(localCenter.activeTokenCount == 0)
+		#expect(workspaceCenter.activeTokenCount == 0)
 	}
 }

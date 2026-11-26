@@ -64,7 +64,57 @@ final class SoftFaceGPU {
 	}
 }
 
+private final class ObserverStore: @unchecked Sendable {
+	private let lock = NSLock()
+	private var entries: [(NotificationCenter, NSObjectProtocol)] = []
+
+	func replace(with next: [(NotificationCenter, NSObjectProtocol)]) {
+		lock.lock()
+		let old = entries
+		entries = next
+		lock.unlock()
+		for (centre, token) in old {
+			centre.removeObserver(token)
+		}
+	}
+
+	func removeAll() {
+		replace(with: [])
+	}
+
+	var count: Int {
+		lock.lock()
+		defer { lock.unlock() }
+		return entries.count
+	}
+}
+
 package class TransparentFaceView: MTKView {
+	private let localNotificationCenter: NotificationCenter
+	private let workspaceNotificationCenter: NotificationCenter
+	private let observerStore = ObserverStore()
+
+	package init(
+		frame frameRect: CGRect = .zero,
+		device: MTLDevice? = nil,
+		localNotificationCenter: NotificationCenter = .default,
+		workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
+	) {
+		self.localNotificationCenter = localNotificationCenter
+		self.workspaceNotificationCenter = workspaceNotificationCenter
+		super.init(frame: frameRect, device: device)
+	}
+
+	required init(coder: NSCoder) {
+		self.localNotificationCenter = .default
+		self.workspaceNotificationCenter = NSWorkspace.shared.notificationCenter
+		super.init(coder: coder)
+	}
+
+	deinit {
+		observerStore.removeAll()
+	}
+
 	override package var isOpaque: Bool { false }
 	package var wantsContinuousRendering = false {
 		didSet {
@@ -90,23 +140,27 @@ package class TransparentFaceView: MTKView {
 		if window != nil { restartRendering() }
 	}
 
-	private var displayObservers: [(NotificationCenter, NSObjectProtocol)] = []
 	package private(set) var observedNotificationNamesForTesting: [Notification.Name] = []
+	package private(set) var restartRenderingCountForTesting = 0
+	package var activeDisplayObserverCountForTesting: Int { observerStore.count }
+
+	package func removeDisplayObservers() {
+		observerStore.removeAll()
+		observedNotificationNamesForTesting.removeAll()
+	}
 
 	/// Opening the lid shows the lock screen panel while the displays are still waking.
 	/// A face view made then got no drawable and a display link bound to no screen, so it
 	/// stayed blank for the whole scan while the text around it updated (issue #100).
 	/// Starting over once the window is actually on a live screen fixes both.
 	private func observeDisplayChanges() {
-		for (centre, token) in displayObservers { centre.removeObserver(token) }
-		displayObservers.removeAll()
-		observedNotificationNamesForTesting.removeAll()
+		removeDisplayObservers()
 		guard let window else { return }
 		let restart: @Sendable (Notification) -> Void = { [weak self] _ in
 			MainActor.assumeIsolated { self?.restartRendering() }
 		}
-		let local = NotificationCenter.default
-		let workspace = NSWorkspace.shared.notificationCenter
+		let local = localNotificationCenter
+		let workspace = workspaceNotificationCenter
 		let registrations: [(NotificationCenter, Notification.Name, AnyObject?)] = [
 			(local, NSWindow.didChangeOcclusionStateNotification, window),
 			(local, NSWindow.didChangeScreenNotification, window),
@@ -115,14 +169,18 @@ package class TransparentFaceView: MTKView {
 			(local, NSWindow.didExposeNotification, window),
 			(workspace, NSWorkspace.screensDidWakeNotification, nil),
 		]
-		displayObservers = registrations.map { centre, name, object in
-			observedNotificationNamesForTesting.append(name)
+		var names: [Notification.Name] = []
+		let tokens: [(NotificationCenter, NSObjectProtocol)] = registrations.map { centre, name, object in
+			names.append(name)
 			return (centre, centre.addObserver(forName: name, object: object, queue: .main, using: restart))
 		}
+		observedNotificationNamesForTesting = names
+		observerStore.replace(with: tokens)
 	}
 
 	package func restartRendering() {
 		guard window != nil else { return }
+		restartRenderingCountForTesting &+= 1
 		matchBackingScale()
 		updateRenderingState()
 		if isPaused {
@@ -176,12 +234,20 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 		package var angle: Double
 		package var material: GazeCompanionMaterial
 		package var opacity: Float
+		package var pose: GazeCompanionPose
 
-		package init(revision: Int, angle: Double, material: GazeCompanionMaterial, opacity: Float) {
+		package init(
+			revision: Int,
+			angle: Double,
+			material: GazeCompanionMaterial,
+			opacity: Float,
+			pose: GazeCompanionPose = GazeCompanionPose()
+		) {
 			self.revision = revision
 			self.angle = angle
 			self.material = material
 			self.opacity = opacity
+			self.pose = pose
 		}
 	}
 
@@ -282,7 +348,8 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 				revision: revision,
 				angle: angle,
 				material: material,
-				opacity: opacity
+				opacity: opacity,
+				pose: pose(Date.timeIntervalSinceReferenceDate)
 			)
 			if coordinator.shouldRedrawWhenPaused(for: state) {
 				coordinator.recordPausedDrawTriggerForTesting()
@@ -296,6 +363,7 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 
 	package static func dismantleNSView(_ view: MTKView, coordinator: Coordinator) {
 		coordinator.finishDiagnostics(in: view, reason: "removed")
+		(view as? TransparentFaceView)?.removeDisplayObservers()
 		view.isPaused = true
 		view.delegate = nil
 		coordinator.pose = nil
