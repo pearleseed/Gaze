@@ -26,6 +26,7 @@ echo "✓ schedule wiring (instance-owned, weak timer, stoppable)"
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-update-lifecycle-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/App/ReleaseUpdateChecker.swift" \
 	"$ROOT/Sources/App/ReleaseURLPolicy.swift" \
 	"$ROOT/Sources/App/UpdateInstaller.swift" \

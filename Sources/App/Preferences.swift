@@ -372,7 +372,7 @@ final class Preferences {
 	/// file still builds on its own in the settings tests.
 	private static var adminPromptQuery: [String: Any] {
 		[kSecClass as String: kSecClassGenericPassword,
-		 kSecAttrService as String: "com.gazeunlock.Gaze",
+		 kSecAttrService as String: AppIdentity.keychainService,
 		 kSecAttrAccount as String: adminPromptAccount]
 	}
 

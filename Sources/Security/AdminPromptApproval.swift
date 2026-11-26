@@ -33,7 +33,7 @@ final class AdminPromptApproval {
 	private let check: FaceApprovalCheck
 	/// Prompts already tried, so a refused or cancelled one is never retried.
 	private var handled: [AXUIElement] = []
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "AdminPrompt")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "AdminPrompt")
 	private static let agentIdentifier = "com.apple.SecurityAgent"
 	/// Most recent frontmost app that is not SecurityAgent, for the requester check.
 	private static var frontmostBundleID: String?

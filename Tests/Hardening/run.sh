@@ -4,6 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-hardening-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library -warnings-as-errors \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/Security/AutofillSecurity.swift" \
 	"$ROOT/Sources/Security/LockoutManager.swift" \
 	"$ROOT/Sources/Camera/CameraFrameLease.swift" \

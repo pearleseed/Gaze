@@ -15,6 +15,7 @@ xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
 	"$ROOT/Tests/Onboarding/LessonMotionTests.swift" \
 	"$ROOT/Tests/Support/PreviewPreferences.swift" \
 	"$ROOT/Sources/Design/"*.swift \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/App/DesktopWallpaper.swift" \
 	"$ROOT/Sources/LockScreen/GazeFaceMark.swift" \
 	"$ROOT/Sources/LockScreen/NotchCapsule.swift" \
@@ -63,7 +64,7 @@ for artwork in tour-backdrop setup-accessibility setup-camera-prompt setup-passw
 	cp "$ROOT/Resources/Art/$artwork.png" "$APP/Contents/Resources/Art/"
 done
 cp "$ROOT/ThirdParty/TourKit/LICENSE" "$APP/Contents/Resources/TourKit-LICENSE.txt"
-/usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string com.gazeunlock.OnboardingReview' "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string com.pearleseed.OnboardingReview' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string OnboardingReview' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleName string Gaze Onboarding Review' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' "$APP/Contents/Info.plist"

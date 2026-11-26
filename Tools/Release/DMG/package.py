@@ -95,7 +95,7 @@ def main():
     if app.name != "Gaze.app":
         parser.error("The input app must be named Gaze.app")
     metadata = plistlib.loads((app / "Contents/Info.plist").read_bytes())
-    if metadata.get("CFBundleIdentifier") != "com.gazeunlock.Gaze":
+    if metadata.get("CFBundleIdentifier") != "com.pearleseed.Gaze":
         parser.error("Unexpected app bundle identifier")
     binary = app / "Contents/MacOS/Gaze"
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(app))

@@ -41,7 +41,7 @@ enum GazeDiagnostics {
 			let process = Process()
 			process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
 			process.arguments = ["show", "--last", "24h", "--style", "compact",
-				"--predicate", "subsystem == \"com.gazeunlock.Gaze\""]
+				"--predicate", "subsystem == \"\(AppIdentity.loggerSubsystem)\""]
 			let pipe = Pipe()
 			process.standardOutput = pipe
 			process.standardError = pipe

@@ -12,7 +12,7 @@ import os
 @MainActor
 final class PresenceWatcher {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Presence")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Presence")
 
 	private static let armIdle = PresenceCheckSchedule.idleRequired
 	private static let tick: Duration = .seconds(15)

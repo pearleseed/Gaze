@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "identifier": "com.gazeunlock.Gaze.dynamiclake",
+  "identifier": "com.pearleseed.Gaze.dynamiclake",
   "name": "Gaze",
   "version": "1.0.0",
-  "developerName": "Owen Cope",
+  "developerName": "pearleseed",
   "executable": "gaze-dynamiclake",
   "arguments": [],
   "icon": "icon.png",
@@ -31,8 +31,8 @@
       "title": "Gaze",
       "description": "Turn on Share status with other apps in Gaze Settings, General.",
       "systemImage": "faceid",
-      "url": "https://gazeunlock.com",
-      "buttonTitle": "Open Website"
+      "url": "https://github.com/pearleseed/Gaze",
+      "buttonTitle": "Open GitHub"
     }
   ]
 }

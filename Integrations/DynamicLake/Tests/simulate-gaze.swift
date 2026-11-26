@@ -6,7 +6,7 @@ let center = DistributedNotificationCenter.default()
 func post(_ event: String, _ extra: [String: Any] = [:], wait: Double = 1) {
 	var info: [String: Any] = ["version": 1, "timestamp": Date().timeIntervalSince1970]
 	info.merge(extra) { $1 }
-	center.postNotificationName(.init("com.gazeunlock.Gaze.status." + event), object: nil,
+	center.postNotificationName(.init("com.pearleseed.Gaze.status." + event), object: nil,
 	                            userInfo: info, deliverImmediately: true)
 	print("posted", event, extra)
 	Thread.sleep(forTimeInterval: wait)

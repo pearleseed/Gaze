@@ -246,7 +246,7 @@ struct OnboardingTests {
 	}
 
 	static func checkFirstUse() {
-		let suite = "com.gazeunlock.OnboardingTests.\(UUID().uuidString)"
+		let suite = "com.pearleseed.OnboardingTests.\(UUID().uuidString)"
 		let defaults = UserDefaults(suiteName: suite)!
 		defer { defaults.removePersistentDomain(forName: suite) }
 		precondition(OnboardingHistory.needsIntroduction(isEnrolled: false, defaults: defaults))

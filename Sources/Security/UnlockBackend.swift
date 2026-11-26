@@ -101,7 +101,7 @@ struct NoUnlockBackend: UnlockBackend {
 struct KeystrokeUnlockBackend: UnlockBackend {
 	let kind = UnlockBackendKind.keystroke
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Keystroke")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Keystroke")
 
 	@MainActor func readiness() -> BackendReadiness {
 		#if PRODUCT_CAPTURE

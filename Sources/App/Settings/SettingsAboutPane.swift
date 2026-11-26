@@ -63,39 +63,21 @@ struct SettingsAboutPane: View {
 			) {
 				linkRow(
 					title: "Website",
-					detail: "gazeunlock.com",
+					detail: "github.com/\(AppIdentity.repositorySlug)",
 					symbol: "safari",
-					url: "https://gazeunlock.com")
+					url: AppIdentity.repositoryURL)
 				RowDivider(inset: 0)
 				linkRow(
 					title: "Release notes",
 					detail: "What changed, version by version",
 					symbol: "list.bullet.rectangle",
-					url: "https://gazeunlock.com/releases")
+					url: AppIdentity.releasesURL)
 				RowDivider(inset: 0)
-				// The Discord, not the issue tracker: the repository is private until launch,
-				// and a support link that lands on a 404 is worse than none.
 				linkRow(
 					title: "Report a problem",
-					detail: "Ask in the Discord",
+					detail: "Open an issue on GitHub",
 					symbol: "exclamationmark.bubble",
-					url: "https://discord.gg/BFgKT5YJH")
-			}
-
-			if let donationURL {
-				SettingsSection(
-					title: "Support",
-					footer: "Gaze is free and always will be. This only exists for anyone who wants to."
-				) {
-					SettingRow(
-						title: "Buy me a coffee",
-						detail: "Opens in your browser",
-						symbol: "heart.fill", symbolTint: Theme.danger
-					) {
-						Button("Open") { NSWorkspace.shared.open(donationURL) }
-							.gazeButton()
-					}
-				}
+					url: AppIdentity.issuesURL)
 			}
 
 			// Said plainly, and said here rather than in a README nobody opens.
@@ -149,12 +131,11 @@ struct SettingsAboutPane: View {
 	/// Same shape as the credits rows: one glyph button per row rather than the destination's
 	/// name on a capsule, so three of them stack without three different widths.
 	private func linkRow(
-		title: String, detail: String, symbol: String, url: String
+		title: String, detail: String, symbol: String, url: URL
 	) -> some View {
 		SettingRow(title: title, detail: detail, symbol: symbol) {
 			Button {
-				guard let link = URL(string: url) else { return }
-				NSWorkspace.shared.open(link)
+				NSWorkspace.shared.open(url)
 			} label: {
 				Image(systemName: "arrow.up.forward")
 			}
@@ -163,15 +144,4 @@ struct SettingsAboutPane: View {
 			.accessibilityLabel("Open \(title)")
 		}
 	}
-
-	/// Where donations go, or nil while there is nowhere to send them.
-	///
-	/// The row does not appear until this is set. A Support button that opens a
-	/// page which does not exist is worse than no button, and this way the app
-	/// ships with the feature dormant rather than broken.
-	///
-	/// A link out, never a form. Taking card details inside a Mac app means a
-	/// merchant agreement and PCI obligations for a tip jar; every indie app
-	/// sends you to a page that already handles that properly.
-	private var donationURL: URL? { nil }
 }

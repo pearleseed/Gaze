@@ -42,7 +42,7 @@ enum AppLockTests {
 	static let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
 	static let neverLockable = [
-		"com.gazeunlock.Gaze",
+		"com.pearleseed.Gaze",
 		"com.apple.finder",
 		"com.apple.systempreferences",
 		"com.apple.loginwindow",
@@ -50,7 +50,7 @@ enum AppLockTests {
 
 	static func makeStore() -> AppLockStore {
 		made += 1
-		let name = "com.gazeunlock.Gaze.AppLockTests.\(made)"
+		let name = "com.pearleseed.Gaze.AppLockTests.\(made)"
 		let defaults = UserDefaults(suiteName: name)!
 		defaults.removePersistentDomain(forName: name)
 		let groupName = name + ".group"
@@ -169,6 +169,8 @@ enum AppLockTests {
 		}
 
 		// The never-lockable list refuses locks.
+		check(AppLockStore.appGroupID == "group.com.pearleseed.Gaze", "App group ID uses com.pearleseed.Gaze")
+		check(AppIdentity.finderExtensionIdentifier == "com.pearleseed.Gaze.Finder", "Finder extension ID uses com.pearleseed.Gaze.Finder")
 		store = makeStore()
 		check(AppLockStore.neverLockable.count == 4, "The never-lockable list is exactly the four")
 		for bundleID in neverLockable {

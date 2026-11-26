@@ -8,7 +8,7 @@ The feed is off by default. The person using Gaze turns it on in Settings, Gener
 
 ## Notifications
 
-Every notification is posted on `DistributedNotificationCenter.default()` with `object` set to nil. The name is `com.gazeunlock.Gaze.status.` followed by the event.
+Every notification is posted on `DistributedNotificationCenter.default()` with `object` set to nil. The name is `com.pearleseed.Gaze.status.` followed by the event.
 
 | Event | When | Extra keys |
 | --- | --- | --- |
@@ -32,13 +32,13 @@ Every `userInfo` also has `version` (Int, currently 1) and `timestamp` (Double, 
 
 ## Syncing when your app starts
 
-Post `com.gazeunlock.Gaze.status.request` with no `userInfo`. If the feed is on, Gaze answers with `state`.
+Post `com.pearleseed.Gaze.status.request` with no `userInfo`. If the feed is on, Gaze answers with `state`.
 
 ## Example
 
 ```swift
 let center = DistributedNotificationCenter.default()
-let prefix = "com.gazeunlock.Gaze.status."
+let prefix = "com.pearleseed.Gaze.status."
 for event in ["state", "screenLocked", "screenUnlocked", "scanStarted", "scanStopped",
               "challenge", "recognised", "notRecognised", "spoofRejected", "unavailable"] {
     center.addObserver(forName: .init(prefix + event), object: nil, queue: .main) { note in

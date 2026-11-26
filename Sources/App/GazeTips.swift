@@ -8,7 +8,7 @@ import os
 /// log one fixed, non-sensitive message. The datastore is never reset here.
 @MainActor
 enum GazeTips {
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Tips")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Tips")
 
 	private static var didConfigure = false
 

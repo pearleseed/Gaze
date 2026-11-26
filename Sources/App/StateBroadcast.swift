@@ -33,7 +33,7 @@ public enum GazeState: String, Sendable {
 ///
 /// ```swift
 /// DistributedNotificationCenter.default().addObserver(
-///     forName: .init("com.gazeunlock.Gaze.state"), object: nil, queue: .main
+///     forName: .init("com.pearleseed.Gaze.state"), object: nil, queue: .main
 /// ) { note in
 ///     let state = note.object as? String          // "detecting", "succeeded", …
 /// }
@@ -48,7 +48,7 @@ enum StateBroadcast {
 
 	/// The notification name. Stable, and part of the public surface of this app — renaming
 	/// it silently breaks every integration, so it changes only with a version bump.
-	static let name = "com.gazeunlock.Gaze.state"
+	static let name = AppIdentity.stateNotificationName
 
 	/// The name this used to post under, still posted alongside the new one.
 	///
@@ -59,10 +59,10 @@ enum StateBroadcast {
 	///
 	/// 2026-09-22: keep posting both names for now so existing subscribers don't break
 	/// silently. Decide keep vs. removal in the v0.2 release notes, not here; the
-	/// `com.gazeunlock.Gaze.state` post below stays post-only with no observer.
+	/// `com.pearleseed.Gaze.state` post below stays post-only with no observer.
 	private static let legacyName = "app.faceid.FaceID.state"
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "StateBroadcast")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "StateBroadcast")
 
 	private static var last: GazeState?
 

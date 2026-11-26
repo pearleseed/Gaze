@@ -80,7 +80,7 @@ private enum SubmissionTests {
 
 	static func main() async {
 		await test("automatic unlocking requires a fresh explicit opt-in and supports revocation") {
-			let suite = "com.gazeunlock.Tests.UnlockConsent.\(UUID().uuidString)"
+			let suite = "com.pearleseed.Tests.UnlockConsent.\(UUID().uuidString)"
 			let defaults = UserDefaults(suiteName: suite)!
 			defer { defaults.removePersistentDomain(forName: suite) }
 			try expect(!PasswordReplaySafety.isEnabled(in: defaults), "Fresh installation opted in")

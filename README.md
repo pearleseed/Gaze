@@ -4,19 +4,18 @@
   <p>Gaze is an app that brings the Face ID feature of your iPhone to your Mac.</p>
   <p>Look at your Mac to unlock it. Private, on-device, and free.</p>
   <p>
-    <a href="https://gazeunlock.com"><img src="docs/images/badge-macos.png" width="179" alt="macOS 26 or later" /></a>
+    <a href="https://github.com/pearleseed/Gaze"><img src="docs/images/badge-macos.png" width="179" alt="macOS 26 or later" /></a>
     <a href="https://www.swift.org"><img src="docs/images/badge-swift.png" width="112" alt="Swift 6" /></a>
     <a href="LICENSE"><img src="docs/images/badge-license.png" width="143" alt="License: MIT" /></a>
-    <a href="https://gazeunlock.com"><img src="docs/images/badge-website.png" width="222" alt="gazeunlock.com" /></a>
   </p>
 </div>
 
 <p align="center">
-  <a href="https://gazeunlock.com"><img src="docs/images/hero.png" width="100%" alt="A MacBook lock screen with Gaze's panel open under the notch, recognising its owner" /></a>
+  <a href="https://github.com/pearleseed/Gaze"><img src="docs/images/hero.png" width="100%" alt="A MacBook lock screen with Gaze's panel open under the notch, recognising its owner" /></a>
 </p>
 
 <p align="center">
-  <a href="https://gazeunlock.com"><img src="docs/images/download-button.png" width="253" alt="Download for Mac" /></a>
+  <a href="https://github.com/pearleseed/Gaze/releases"><img src="docs/images/download-button.png" width="253" alt="Download for Mac" /></a>
 </p>
 
 ## Features
@@ -32,13 +31,13 @@ Face ID for Mac, with nothing leaving your computer.
 
 ## Simple to install.
 
-Install with Homebrew, and it opens without any warning.
+Install with Homebrew, which clears macOS quarantine on install and upgrade:
 
 ```sh
-brew install --cask owencope/gaze/gaze
+brew install --cask pearleseed/gaze/gaze
 ```
 
-Or download it from [gazeunlock.com](https://gazeunlock.com) and drag Gaze to Applications. The first time you open it, go to System Settings, then Privacy & Security, and click Open Anyway.
+Or download the latest DMG from [GitHub Releases](https://github.com/pearleseed/Gaze/releases) and drag Gaze to Applications. Because builds are not Apple-notarized, the first time you open it, go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/Gaze.app`).
 
 ## Unlocks as you look.
 
@@ -46,7 +45,7 @@ When your Mac locks, Gaze turns on the camera and looks for you. It compares you
 
 ## Private by design.
 
-Recognition runs on your Mac and nothing is uploaded. Your face data is encrypted, and your password is protected by a key from the Secure Enclave. A Mac camera can’t measure depth like Face ID, so Gaze rejects photos and screens, and your password always works. To report a security issue, see [SECURITY.md](SECURITY.md).
+Recognition runs on your Mac and nothing is uploaded. Your face data is encrypted, and your password is protected by a key from the Secure Enclave. A Mac camera can’t measure depth like Face ID, so Gaze rejects photos and screens, and your password always works. To report a security issue, open an issue at [github.com/pearleseed/Gaze/issues](https://github.com/pearleseed/Gaze/issues).
 
 ## What you need.
 
@@ -60,13 +59,13 @@ Open `Gaze.xcodeproj` and choose the **Gaze** scheme to develop in Xcode. See
 [Tools](Tools/README.md) for local model setup, signing and per-architecture release builds.
 
 ```sh
-git clone https://github.com/OwenCope/Gaze.git
+git clone https://github.com/pearleseed/Gaze.git
 cd Gaze
 ./build.sh
 open build/Gaze.app
 ```
 
-Source archives don’t include the recognition model; [NOTICE.md](NOTICE.md) explains why. Pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
+Source archives don’t include the recognition model; [NOTICE.md](NOTICE.md) explains why. Pull requests and bug reports are welcome at [github.com/pearleseed/Gaze](https://github.com/pearleseed/Gaze).
 
 ## Thanks.
 

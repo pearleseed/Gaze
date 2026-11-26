@@ -10,7 +10,7 @@ enum AppLockURLAction {
 
 	static func bundleID(from url: URL) -> String? {
 		guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-			parts.scheme?.lowercased() == "gaze",
+			parts.scheme?.lowercased() == AppIdentity.urlScheme,
 			parts.host?.lowercased() == "app-lock",
 			parts.path == "/toggle"
 		else { return nil }

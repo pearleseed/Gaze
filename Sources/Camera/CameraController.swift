@@ -246,8 +246,8 @@ final class CameraController {
 private final class CameraCaptureDriver: @unchecked Sendable {
 	let session = AVCaptureSession()
 	private let output = AVCaptureVideoDataOutput()
-	private let sessionQueue = DispatchQueue(label: "com.gazeunlock.Gaze.session", qos: .userInitiated)
-	private let frameQueue = DispatchQueue(label: "com.gazeunlock.Gaze.capture", qos: .userInitiated)
+	private let sessionQueue = DispatchQueue(label: "\(AppIdentity.bundleIdentifier).session", qos: .userInitiated)
+	private let frameQueue = DispatchQueue(label: "\(AppIdentity.bundleIdentifier).capture", qos: .userInitiated)
 	private var proxy: SampleProxy?
 	var allowsBystanders = false
 	/// Smaller frames reach a first match sooner; enrolment keeps full size.
@@ -296,7 +296,7 @@ private final class CameraCaptureDriver: @unchecked Sendable {
 		let input = try AVCaptureDeviceInput(device: device)
 		guard session.canAddInput(input) else {
 			throw NSError(
-				domain: "com.gazeunlock.Gaze", code: 1,
+				domain: AppIdentity.bundleIdentifier, code: 1,
 				userInfo: [NSLocalizedDescriptionKey: "Could not read from the built-in camera."])
 		}
 		session.addInput(input)
@@ -314,7 +314,7 @@ private final class CameraCaptureDriver: @unchecked Sendable {
 		session.outputs.forEach(session.removeOutput)
 		guard session.canAddOutput(output) else {
 			throw NSError(
-				domain: "com.gazeunlock.Gaze", code: 2,
+				domain: AppIdentity.bundleIdentifier, code: 2,
 				userInfo: [NSLocalizedDescriptionKey: "Could not attach the video output."])
 		}
 		session.addOutput(output)

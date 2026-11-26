@@ -2,7 +2,7 @@
 # Puts a freshly built Gaze in place of the copy this Mac actually runs, and restarts it.
 #
 # Gaze runs from wherever its launch agent points (~/Library/LaunchAgents/
-# com.gazeunlock.Gaze.agent.plist), with KeepAlive, so quitting it just relaunches the
+# com.pearleseed.Gaze.agent.plist), with KeepAlive, so quitting it just relaunches the
 # old copy and building somewhere else changes nothing you can see. This swaps the app
 # at that path, keeping the previous one beside it, and restarts the agent.
 #
@@ -11,7 +11,7 @@
 #   Tools/Scripts/install-local.sh --restore        put the previous copy back
 set -euo pipefail
 
-AGENT_LABEL="com.gazeunlock.Gaze.agent"
+AGENT_LABEL="com.pearleseed.Gaze.agent"
 AGENT_PLIST="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOMAIN="gui/$(id -u)"
@@ -73,6 +73,6 @@ if pgrep -f "$EXECUTABLE" >/dev/null; then
 	echo "Running $(version "$TARGET") from $TARGET"
 	[ -d "$PREVIOUS" ] && echo "Previous copy ($(version "$PREVIOUS")) kept at $PREVIOUS. Undo with: $0 --restore"
 else
-	echo "Gaze did not start. Check Console for com.gazeunlock.Gaze." >&2
+	echo "Gaze did not start. Check Console for com.pearleseed.Gaze." >&2
 	exit 1
 fi

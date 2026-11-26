@@ -9,7 +9,7 @@ import os
 /// repeating timers; startup only.
 @MainActor
 enum StartupTiming {
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Startup")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Startup")
 
 	static var isEnabled: Bool {
 		CommandLine.arguments.contains("--startup-diagnostics")

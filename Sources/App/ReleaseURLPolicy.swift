@@ -28,7 +28,7 @@ enum ReleaseURLPolicy {
 		if host == "gazeunlock.com" { return true }
 		// Release assets only — never a login page, blob view or other path.
 		if host == "github.com" {
-			return components.path.hasPrefix("/OwenCope/Gaze/releases/download/")
+			return components.path.hasPrefix("/\(AppIdentity.repositorySlug)/releases/download/")
 		}
 		return host == "release-assets.githubusercontent.com"
 			|| host == "objects.githubusercontent.com"

@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/Tools/Release/Architecture.sh"
 gaze_require_release_arch "${GAZE_ARCHS:-}" || exit 2
 APP="${1:-$ROOT/build/release/$GAZE_ARCHS/Gaze.app}"
-BUNDLE_ID=com.gazeunlock.Gaze
+BUNDLE_ID=com.pearleseed.Gaze
 fail() { echo "FAIL: $*" >&2; exit 1; }
 test -d "$APP" || fail "Release bundle missing: $APP"
 PLIST="$APP/Contents/Info.plist"

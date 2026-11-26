@@ -256,7 +256,7 @@ func handle(_ event: String, _ info: [AnyHashable: Any]) {
 	}
 }
 
-let prefix = "com.gazeunlock.Gaze.status."
+let prefix = "com.pearleseed.Gaze.status."
 let center = DistributedNotificationCenter.default()
 for event in ["hello", "state", "screenLocked", "screenUnlocked", "scanStarted", "scanStopped", "challenge",
               "recognised", "notRecognised", "spoofRejected", "unavailable", "appLockShown", "appLockUnlocked"] {

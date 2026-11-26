@@ -6,7 +6,7 @@ require_toolchain
 FIXTURE="$(mktemp -d "${TMPDIR:-/tmp}/gaze-readiness.XXXXXX")"
 trap 'rm -rf "$FIXTURE"' EXIT
 mkdir -p "$FIXTURE/Sources/GazeReadiness" "$FIXTURE/Tests/GazeReadinessTests"
-cp "$ROOT/Sources/App/ReleaseUpdateChecker.swift" "$ROOT/Sources/App/ReleaseURLPolicy.swift" \
+cp "$ROOT/Sources/App/AppIdentity.swift" "$ROOT/Sources/App/ReleaseUpdateChecker.swift" "$ROOT/Sources/App/ReleaseURLPolicy.swift" \
    "$ROOT/Sources/App/UpdateInstaller.swift" "$ROOT/Sources/App/Settings/SettingsNavigator.swift" \
    "$ROOT/Sources/App/DesktopWallpaper.swift" "$FIXTURE/Sources/GazeReadiness/"
 cp "$ROOT/Tests/AppReadiness/ThemeStub.swift" "$FIXTURE/Sources/GazeReadiness/"

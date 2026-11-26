@@ -17,7 +17,7 @@ final class TamperGuard {
 
 	static let shared = TamperGuard()
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "TamperGuard")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "TamperGuard")
 
 	private var bundleWatcher: DispatchSourceFileSystemObject?
 	private(set) var bundleWasModified = false

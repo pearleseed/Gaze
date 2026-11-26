@@ -21,7 +21,7 @@ case "${1:-}" in
 esac
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RESOURCES="${GAZE_PREFLIGHT_RESOURCES:-$ROOT/Resources}"
-BUNDLE_ID=com.gazeunlock.Gaze
+BUNDLE_ID=com.pearleseed.Gaze
 MISSING=0
 ok() { echo "ok: $*"; }
 missing() { echo "missing: $*" >&2; MISSING=$((MISSING + 1)); }

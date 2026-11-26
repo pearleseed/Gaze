@@ -22,7 +22,7 @@ import os
 /// already asks for. Nothing new is being requested of the user.
 enum ScreenLock {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "ScreenLock")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "ScreenLock")
 
 	/// `Q`, in the virtual key codes that never change with keyboard layout.
 	private static let keyQ: CGKeyCode = 12

@@ -6,6 +6,7 @@ require_toolchain
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-movement-settings-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Tests/MovementSettings/UnlockBackendStub.swift" \
 	"$ROOT/Sources/App/Preferences.swift" \
 	"$ROOT/Sources/App/StatusBroadcast.swift" \

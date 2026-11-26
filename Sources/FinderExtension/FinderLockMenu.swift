@@ -4,7 +4,7 @@ import Foundation
 /// compile it unchanged; the extension links it alongside AppLockStore.
 enum FinderLockMenu {
 
-	static let toggleScheme = "gaze"
+	static let toggleScheme = AppIdentity.urlScheme
 	static let toggleHost = "app-lock"
 	static let togglePath = "/toggle"
 

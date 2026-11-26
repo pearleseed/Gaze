@@ -8,6 +8,7 @@ trap 'rm -rf "$BUILD"' EXIT
 SDK="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
 xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(uname -m)-apple-macos26.0" \
 	"$ROOT/Tests/Support/PreviewPreferences.swift" \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/Design/"*.swift \
 	"$ROOT/Sources/LockScreen/GazeFaceMark.swift" \
 	"$ROOT/Sources/Companion/"*.swift \

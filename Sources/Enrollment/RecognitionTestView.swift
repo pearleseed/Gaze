@@ -245,7 +245,7 @@ struct RecognitionTestView: View {
 			CameraPreview(controller: camera)
 				.overlay { faceBoxOverlay }
 				// A tuning tool, not part of the test: it crowded the status pill and cost a
-				// model run per frame. `defaults write com.gazeunlock.Gaze showEyeReadout -bool YES`.
+				// model run per frame. `defaults write com.pearleseed.Gaze showEyeReadout -bool YES`.
 				.overlay(alignment: .bottomTrailing) { if Self.showsEyeReadout { eyesRow.padding(14) } }
 		} else {
 			ZStack {

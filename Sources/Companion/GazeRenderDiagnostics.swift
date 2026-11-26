@@ -18,7 +18,7 @@ struct GazeRenderDiagnostics {
 	}
 
 	static let enabled = ProcessInfo.processInfo.environment["GAZE_RENDER_DIAGNOSTICS"] == "1"
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "RenderTiming")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "RenderTiming")
 	private var beganAt: Double?
 	private var previousCallback: Double?
 	private var intervals: [Double] = []

@@ -11,7 +11,7 @@ import os
 @MainActor
 final class NotchCapsuleController {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "NotchCapsule")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "NotchCapsule")
 	private static let horizontalInset: CGFloat = 20
 
 	/// Asked of the window server rather than remembered, for the diagnostic line below.

@@ -20,7 +20,7 @@ final class LockScreenSpace {
 
 	static let shared = LockScreenSpace()
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "LockScreenSpace")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "LockScreenSpace")
 
 	/// Absolute space levels macOS uses. Anything at or above the screen-lock level is
 	/// composited while the screen is locked.

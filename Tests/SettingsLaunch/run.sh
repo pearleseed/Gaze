@@ -25,7 +25,7 @@ SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gaze-settings-handoff.XXXXXX")"
 MARKDIR="$SCRATCH/marks"
 APP="$SCRATCH/GazeHandoffFixture.app"
 EXE="$APP/Contents/MacOS/GazeHandoffFixture"
-BUNDLE_ID="com.gazeunlock.Gaze.SettingsLaunchHandoffTest"
+BUNDLE_ID="com.pearleseed.Gaze.SettingsLaunchHandoffTest"
 LOG="$SCRATCH/harness.log"
 mkdir -p "$MARKDIR" "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -64,11 +64,12 @@ else
 fi
 xcrun swiftc -o "$EXE" \
 	"${SDKFLAG[@]+"${SDKFLAG[@]}"}" -target "$(host_target)" \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/App/Settings/SettingsLaunchHandoff.swift" \
 	"$ROOT/Sources/App/Settings/SettingsPane.swift" \
 	"$ROOT/Tests/SettingsLaunch/Fixture.swift" >>"$LOG" 2>&1 \
 	|| fail "fixture did not compile"
-/usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string com.gazeunlock.Gaze.SettingsLaunchHandoffTest' "$APP/Contents/Info.plist" >>"$LOG" 2>&1
+/usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string com.pearleseed.Gaze.SettingsLaunchHandoffTest' "$APP/Contents/Info.plist" >>"$LOG" 2>&1
 /usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string GazeHandoffFixture' "$APP/Contents/Info.plist" >>"$LOG" 2>&1
 /usr/libexec/PlistBuddy -c 'Add :CFBundleName string GazeHandoffFixture' "$APP/Contents/Info.plist" >>"$LOG" 2>&1
 /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' "$APP/Contents/Info.plist" >>"$LOG" 2>&1

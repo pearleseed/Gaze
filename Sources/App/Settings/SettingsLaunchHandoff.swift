@@ -16,7 +16,7 @@ import os
 @MainActor
 enum SettingsLaunchHandoff {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Startup")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Startup")
 
 	/// Pure eligibility: a bare launch hands off, as before, and any launch
 	/// carrying `--settings` hands off unless a service-mode flag is present.
@@ -47,7 +47,7 @@ enum SettingsLaunchHandoff {
 	/// The running app reads its pane from its own argv, which a handoff never
 	/// changes, so the handing-off process leaves the validated pane name here
 	/// for it to consume when it presents Settings.
-	static let pendingPaneKey = "com.gazeunlock.Gaze.pendingSettingsPane"
+	static let pendingPaneKey = AppIdentity.pendingSettingsPaneKey
 	private static let paneFlagPrefix = "--settings-pane="
 
 	/// First `--settings-pane=<name>` value, validated against the known panes so

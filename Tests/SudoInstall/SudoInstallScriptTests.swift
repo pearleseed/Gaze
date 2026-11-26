@@ -45,7 +45,7 @@ enum SudoInstallScriptTests {
 		let existing = "# Added by Gaze. Remove this line.\nauth       sufficient     /usr/local/lib/pam/pam_gaze.so\n" + otherRules
 		try existing.write(toFile: paths.sudoLocalPath, atomically: true, encoding: .utf8)
 		try fm.setAttributes([.posixPermissions: 0o444], ofItemAtPath: paths.sudoLocalPath)
-		let requirement = #"identifier "com.gazeunlock.Gaze" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: a@b.c (Y6LG3Q6HV4)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */"#
+		let requirement = #"identifier "com.pearleseed.Gaze" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: a@b.c (Y6LG3Q6HV4)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */"#
 
 		// Model macOS denying creation of the temporary PAM policy, while leaving
 		// the original policy readable and the module destination writable.

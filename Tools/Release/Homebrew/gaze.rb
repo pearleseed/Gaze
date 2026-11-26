@@ -1,7 +1,7 @@
 # Homebrew cask for Gaze. Lives in a tap repository named `homebrew-gaze`
-# (github.com/OwenCope/homebrew-gaze, file Casks/gaze.rb), so people install with:
+# (github.com/pearleseed/homebrew-gaze, file Casks/gaze.rb), so people install with:
 #
-#     brew install --cask owencope/gaze/gaze
+#     brew install --cask pearleseed/gaze/gaze
 #
 # Gaze is not notarized, so macOS would block the first launch. The postflight
 # clears the quarantine flag on install and on every upgrade, which is what the
@@ -11,10 +11,10 @@ cask "gaze" do
   version "0.1.12"
   sha256 "7ca8b375dc3c9f59426c6d4206f3028139303766e907cc1a76f9b68fbbf62c94"
 
-  url "https://github.com/OwenCope/Gaze/releases/download/v#{version}/Gaze.dmg"
+  url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze.dmg"
   name "Gaze"
   desc "Face ID-style face unlock"
-  homepage "https://gazeunlock.com/"
+  homepage "https://github.com/pearleseed/Gaze"
 
   auto_updates true
   depends_on macos: :tahoe
@@ -26,10 +26,10 @@ cask "gaze" do
                           writable_paths: ["Gaze.app"], writable_base: :appdir
   end
 
-  uninstall quit: "com.gazeunlock.Gaze"
+  uninstall quit: "com.pearleseed.Gaze"
 
   zap trash: [
     "~/Library/Application Support/Gaze",
-    "~/Library/Preferences/com.gazeunlock.Gaze.plist",
+    "~/Library/Preferences/com.pearleseed.Gaze.plist",
   ]
 end

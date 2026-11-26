@@ -60,7 +60,7 @@ enum PresenceLifecycleTests {
 		try expect(UnlockBackendKind.allCases == [.none, .keystroke], "UnlockBackendKind exposes only none and keystroke")
 		try expect(UnlockBackendKind.selectableCases == [.none, .keystroke], "UnlockBackendKind.selectableCases matches none and keystroke")
 
-		let suite = "com.gazeunlock.PresenceLifecycleTests.\(UUID().uuidString)"
+		let suite = "com.pearleseed.PresenceLifecycleTests.\(UUID().uuidString)"
 		let defaults = UserDefaults(suiteName: suite)!
 		defer { defaults.removePersistentDomain(forName: suite) }
 

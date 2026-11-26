@@ -120,7 +120,7 @@ struct StoredFaceEnrollments: Decodable, Sendable {
 final class FaceEnrollmentStore {
 
 	private static let account = "face-enrollment"
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Enrollment")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Enrollment")
 
 	/// How many faces may be enrolled at once.
 	///

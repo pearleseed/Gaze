@@ -12,7 +12,7 @@ import os
 enum SecureVault {
 
 	private static let keyAccount = "vault-key"
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "SecureVault")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "SecureVault")
 
 	enum VaultError: LocalizedError {
 		case enclaveUnavailable

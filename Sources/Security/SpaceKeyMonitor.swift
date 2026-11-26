@@ -13,7 +13,7 @@ import os
 /// and a missing grant fails closed to a no-op rather than prompting.
 @MainActor
 final class SpaceKeyMonitor {
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "SpaceKeyMonitor")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "SpaceKeyMonitor")
 
 	/// Spacebar key-down: usage page 0x07, usage 0x2C.
 	private static let spaceUsagePage: UInt32 = 0x07
@@ -83,7 +83,7 @@ final class SpaceKeyMonitor {
 				}
 				return
 			}
-			Logger(subsystem: "com.gazeunlock.Gaze", category: "SpaceKeyMonitor").notice("Space pressed.")
+			Logger(subsystem: AppIdentity.loggerSubsystem, category: "SpaceKeyMonitor").notice("Space pressed.")
 			MainActor.assumeIsolated { monitor.onSpaceKeyDown?() }
 		}, context)
 

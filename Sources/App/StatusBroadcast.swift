@@ -2,7 +2,7 @@ import Foundation
 
 /// Gaze's opt-in public status feed, for apps like DynamicLake that draw their own island.
 ///
-/// Every event is a distributed notification named `com.gazeunlock.Gaze.status.<event>`
+/// Every event is a distributed notification named `com.pearleseed.Gaze.status.<event>`
 /// with `object` nil and a `userInfo` of plain strings and numbers. Distributed
 /// notifications are readable by any process on the Mac, so payloads say only what a
 /// person looking at the screen could see: never names, faces, scores, paths or passwords,
@@ -14,7 +14,7 @@ import Foundation
 @MainActor
 enum GazeStatusBroadcast {
 
-	static let prefix = "com.gazeunlock.Gaze.status."
+	static let prefix = AppIdentity.statusNotificationPrefix
 	static let version = 1
 
 	enum Event: String, CaseIterable {

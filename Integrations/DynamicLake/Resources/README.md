@@ -4,7 +4,7 @@ Shows Gaze, the Mac face-unlock app, in DynamicLake's island: when it's looking 
 
 ## Setup
 
-1. Install Gaze from https://gazeunlock.com.
+1. Install Gaze from https://github.com/pearleseed/Gaze/releases.
 2. In Gaze, open Settings, General, and turn on Share status with other apps.
 
 Without that setting, or while Gaze isn't running, this plugin shows nothing.

@@ -24,7 +24,7 @@ enum AppLockRelockPolicy: String, CaseIterable, Sendable {
 /// The persisted set of bundle IDs locked by App Lock.
 ///
 /// Lives in the standard defaults and is mirrored to the app-group suite
-/// `group.com.gazeunlock.Gaze`, so a future Finder extension reading only the
+/// `group.com.pearleseed.Gaze`, so a future Finder extension reading only the
 /// shared suite agrees with the app. Every mutation writes both; reads come
 /// from the standard defaults, adopting the shared suite once when it holds
 /// values the app has never seen (for example set by the extension first).
@@ -33,7 +33,7 @@ enum AppLockRelockPolicy: String, CaseIterable, Sendable {
 /// so it touches nothing else in the app.
 final class AppLockStore {
 
-	static let appGroupID = "group.com.gazeunlock.Gaze"
+	static let appGroupID = AppIdentity.appGroupIdentifier
 
 	/// Apps that can never be locked or shielded, whatever is asked for.
 	///
@@ -42,7 +42,7 @@ final class AppLockStore {
 	/// at all. All four are refused by `add(_:)` and read as unlocked by
 	/// `isLocked(_:)` even if they somehow end up in storage.
 	static let neverLockable: Set<String> = [
-		"com.gazeunlock.Gaze",
+		AppIdentity.bundleIdentifier,
 		"com.apple.finder",
 		"com.apple.systempreferences",
 		"com.apple.loginwindow",

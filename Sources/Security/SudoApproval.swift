@@ -29,7 +29,7 @@ final class SudoApproval {
 	private var source: DispatchSourceRead?
 	private var listenerFD: Int32 = -1
 	private var socketPath: String = ""
-	nonisolated private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Sudo")
+	nonisolated private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Sudo")
 	private static let socketName = "sudo.sock"
 	private static let folderName = "Library/Application Support/Gaze"
 	private static let expectedPeerPath = "/usr/bin/sudo"

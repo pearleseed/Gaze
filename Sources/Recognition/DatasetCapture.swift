@@ -29,7 +29,7 @@ final class DatasetCapture {
 		var title: String { self == .live ? "Live" : "Spoof" }
 	}
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Dataset")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Dataset")
 
 	/// The side of the square written to disk.
 	///

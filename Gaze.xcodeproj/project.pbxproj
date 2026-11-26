@@ -12,6 +12,7 @@
 		4808468069354B9E3F2750EC /* Credits in Resources */ = {isa = PBXBuildFile; fileRef = AA80409135E8752736AEE6B8 /* Credits */; };
 		52B523485FE654DF6BDD483E /* Art in Resources */ = {isa = PBXBuildFile; fileRef = 407B0498686AE665EDD7E938 /* Art */; };
 		AAB97901A4B3BFB1E69D9DB2 /* Sources/Security/AppLockStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E0942E0F7740E67315D78E /* Sources/Security/AppLockStore.swift */; };
+		B1A2C3D4E5F60718293A4B5C /* Sources/App/AppIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* Sources/App/AppIdentity.swift */; };
 		EDA2408632156DF22890466D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 70E0794F31F85796DF213205 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
@@ -50,6 +51,7 @@
 		73B06A8CA68C735BA6AB423F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		89E6E3A3E130D5EBF828BFC6 /* GazeFinder.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = GazeFinder.xcconfig; sourceTree = "<group>"; };
 		97B64623A4A738DABFA6CEAB /* ThirdParty/TourKit/TourKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdParty/TourKit/TourKit.swift; sourceTree = SOURCE_ROOT; };
+		A1B2C3D4E5F60718293A4B5D /* Sources/App/AppIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/App/AppIdentity.swift; sourceTree = SOURCE_ROOT; };
 		AA80409135E8752736AEE6B8 /* Credits */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Credits; sourceTree = "<group>"; };
 		CD1A7C18C3575A472737DFCC /* Gaze.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Gaze.xcconfig; sourceTree = "<group>"; };
 		E503802AD35FA7761EB311F5 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
@@ -198,6 +200,7 @@
 			isa = PBXGroup;
 			children = (
 				41E0942E0F7740E67315D78E /* Sources/Security/AppLockStore.swift */,
+				A1B2C3D4E5F60718293A4B5D /* Sources/App/AppIdentity.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -359,6 +362,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AAB97901A4B3BFB1E69D9DB2 /* Sources/Security/AppLockStore.swift in Sources */,
+				B1A2C3D4E5F60718293A4B5C /* Sources/App/AppIdentity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

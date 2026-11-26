@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the source archive published on gazeunlock.com.
+# Builds the source archive for pearleseed/Gaze.
 #
 # Not a zip of the working directory. It is built from what git tracks, which
 # means anything ignored cannot end up in it by accident — and two of the

@@ -77,7 +77,7 @@ private final class WallpaperStoreMonitor {
 			return nil
 		}
 		FSEventStreamSetDispatchQueue(
-			stream, DispatchQueue(label: "com.gazeunlock.Gaze.wallpaperStoreWatcher"))
+			stream, DispatchQueue(label: "\(AppIdentity.bundleIdentifier).wallpaperStoreWatcher"))
 		guard FSEventStreamStart(stream) else {
 			FSEventStreamStop(stream)
 			FSEventStreamRelease(stream)
@@ -123,7 +123,7 @@ final class DesktopWallpaper {
 
 	private(set) var image: NSImage?
 
-	private let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Wallpaper")
+	private let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Wallpaper")
 	@ObservationIgnored private var loadGate = WallpaperLoadGate()
 	@ObservationIgnored private var loadTask: Task<Void, Never>?
 	@ObservationIgnored private var reportedUnresolvedURL = false

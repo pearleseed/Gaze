@@ -16,7 +16,7 @@ struct GazeCompanionView: View {
 	@State private var renderError: String?
 	@State private var visible = false
 	@State private var settled = false
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "CompanionRender")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "CompanionRender")
 	private var reducedMotion: Bool { systemReduceMotion || previewReduceMotion }
 	private var resolvedOpacity: Float { reduceTransparency ? 1 : 0.68 }
 	private var canAnimate: Bool { active && visible && !reducedMotion && (runsWhileInactive || scenePhase == .active) }

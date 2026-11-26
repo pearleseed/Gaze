@@ -153,7 +153,7 @@ private func stubbedConfiguration() -> URLSessionConfiguration {
 private func makeChecker(startupDelay: Duration = .milliseconds(50)) throws -> (
     ReleaseUpdateChecker, UserDefaults, String
 ) {
-    let suiteName = "com.gazeunlock.Gaze.UpdateLifecycleTests.\(UUID().uuidString)"
+    let suiteName = "com.pearleseed.Gaze.UpdateLifecycleTests.\(UUID().uuidString)"
     guard let suite = UserDefaults(suiteName: suiteName) else {
         throw LifecycleFailure.failed("could not create suite \(suiteName)")
     }
@@ -342,7 +342,7 @@ private enum UpdateLifecycleTests {
     static func trustedDownloadHops() async throws {
         for value in [
             "https://gazeunlock.com/download",
-            "https://github.com/OwenCope/Gaze/releases/download/v1.2.3/Gaze.dmg",
+            "https://github.com/pearleseed/Gaze/releases/download/v1.2.3/Gaze.dmg",
             "https://release-assets.githubusercontent.com/123/abc/Gaze.dmg",
             "https://objects.githubusercontent.com/abc123",
         ] {
@@ -353,10 +353,10 @@ private enum UpdateLifecycleTests {
         for value in [
             "http://gazeunlock.com/download",
             "https://example.com/Gaze.dmg",
-            "https://github.com/OwenCope/Gaze/blob/main/README.md",
+            "https://github.com/pearleseed/Gaze/blob/main/README.md",
             "https://github.com/SomeoneElse/Other/releases/download/v1/Gaze.dmg",
             "https://user@gazeunlock.com/download",
-            "https://user:pass@github.com/OwenCope/Gaze/releases/download/v1/Gaze.dmg",
+            "https://user:pass@github.com/pearleseed/Gaze/releases/download/v1/Gaze.dmg",
             "https://gazeunlock.com/download#part",
             "https://gazeunlock.com:8443/download",
         ] {

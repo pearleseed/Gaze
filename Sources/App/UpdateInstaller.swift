@@ -24,7 +24,7 @@ final class UpdateInstaller {
 		let scriptPath: String
 	}
 
-	nonisolated private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "UpdateInstall")
+	nonisolated private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "UpdateInstall")
 
 	private(set) var state: State = .idle
 
@@ -299,7 +299,7 @@ final class UpdateInstaller {
 			fi
 			for _ in $(seq 1 50); do kill -0 \(pid) 2>/dev/null || break; sleep 0.2; done
 			if kill -0 \(pid) 2>/dev/null; then exit 1; fi
-			/bin/launchctl remove com.gazeunlock.Gaze.agent 2>/dev/null || true
+			/bin/launchctl remove \(AppIdentity.bundleIdentifier).agent 2>/dev/null || true
 			mv "$APP" "$TMP/Gaze-previous.app"
 			if ! mv "$STAGED" "$APP"; then mv "$TMP/Gaze-previous.app" "$APP"; exit 1; fi
 			if ! /usr/bin/pgrep -qf "$APP/Contents/MacOS/Gaze" 2>/dev/null; then open "$APP"; fi

@@ -16,7 +16,7 @@ final class ReleaseUpdateChecker {
 
 	static let shared = ReleaseUpdateChecker()
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Releases")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Releases")
 
 	private static let feed = ReleaseURLPolicy.feed
 

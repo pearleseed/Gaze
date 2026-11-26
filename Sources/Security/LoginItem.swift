@@ -15,7 +15,7 @@ import os
 /// exits it stays exited.
 enum LoginItem {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "LoginItem")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "LoginItem")
 
 	static var isEnabled: Bool {
 		SMAppService.mainApp.status == .enabled

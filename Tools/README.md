@@ -3,7 +3,7 @@
 - `Scripts/`: toolchain discovery, app source discovery, shared bundle resource
   staging, the local build-and-run helper and the source-archive builder.
 - `Release/DMG/`: the disk-image layout, artwork, and `package.py` packager.
-- `Release/Homebrew/`: the cask for the `owencope/gaze` tap.
+- `Release/Homebrew/`: the cask for the `pearleseed/gaze` tap.
 - `Release/ModelClearance/`: the model and asset licence inventory that the build checks.
 - `Release/Signing.sh`, `preflight.sh`, `verify.sh`: signing and release checks.
 

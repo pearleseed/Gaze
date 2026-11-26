@@ -6,6 +6,7 @@ require_toolchain
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-presence-lifecycle-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library -warnings-as-errors \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/Security/UnlockExecutionPolicy.swift" \
 	"$ROOT/Sources/Security/UnlockBackend.swift" \
 	"$ROOT/Sources/App/Preferences.swift" \

@@ -31,7 +31,7 @@ xcrun swiftc -parse-as-library -target "$(host_target)" \
 python3 - "$APP/Contents/Info.plist" <<'PY'
 import plistlib,sys
 with open(sys.argv[1], 'wb') as stream:
-    plistlib.dump({'CFBundleIdentifier':'com.gazeunlock.SettingsInteractionFixture',
+    plistlib.dump({'CFBundleIdentifier':'com.pearleseed.SettingsInteractionFixture',
                   'CFBundleExecutable':'SettingsFixture', 'CFBundleName':'Gaze Settings Fixture',
                   'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'26.0'}, stream)
 PY

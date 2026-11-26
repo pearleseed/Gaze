@@ -41,7 +41,7 @@ struct StatusBroadcastTests {
 			expect(names.contains(GazeStatusBroadcast.prefix + event.rawValue), "\(event) posted")
 		}
 		for (name, info) in posts {
-			expect(name.hasPrefix("com.gazeunlock.Gaze.status."), "\(name) prefix")
+			expect(name.hasPrefix("com.pearleseed.Gaze.status."), "\(name) prefix")
 			expect(Set(info.keys).isSubset(of: GazeStatusBroadcast.allowedKeys), "\(name) keys \(info.keys.sorted())")
 			expect(info["version"] as? Int == 1, "\(name) version")
 			expect(info["timestamp"] is Double, "\(name) timestamp")

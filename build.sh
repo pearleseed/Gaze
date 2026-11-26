@@ -226,7 +226,8 @@ mkdir -p "$APPEX/Contents/MacOS"
 compile_swift_binary "$APPEX/Contents/MacOS/GazeFinder" GazeFinder \
 	-application-extension -framework Cocoa -framework FinderSync \
 	-Xlinker -e -Xlinker _NSExtensionMain \
-	"$ROOT"/Sources/FinderExtension/*.swift "$ROOT/Sources/Security/AppLockStore.swift"
+	"$ROOT"/Sources/FinderExtension/*.swift "$ROOT/Sources/Security/AppLockStore.swift" \
+	"$ROOT/Sources/App/AppIdentity.swift"
 cp "$ROOT/Sources/FinderExtension/Info.plist" "$APPEX/Contents/Info.plist"
 stamp_gaze_bundle_version "$STAGE/Contents/Info.plist" "$APPEX/Contents/Info.plist"
 echo "  ✓ GazeFinder.appex"
@@ -275,13 +276,13 @@ fi
 
 gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
 	--entitlements "$ROOT/Sources/FinderExtension/GazeFinder.entitlements" \
-	--identifier com.gazeunlock.Gaze.Finder "$APPEX"
+	--identifier com.pearleseed.Gaze.Finder "$APPEX"
 
 codesign --verify --strict "$APPEX"
 
 gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
 	--entitlements "$ROOT/Resources/Gaze.entitlements" \
-	--identifier com.gazeunlock.Gaze "$STAGE"
+	--identifier com.pearleseed.Gaze "$STAGE"
 
 codesign --verify --strict "$STAGE"
 if [ "${DIST:-}" = "1" ]; then

@@ -8,6 +8,7 @@ require_toolchain
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-status-broadcast-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/App/StatusBroadcast.swift" \
 	"$ROOT/Tests/StatusBroadcast/StatusBroadcastTests.swift" \
 	-o "$BUILD/status-broadcast-tests"

@@ -9,6 +9,7 @@ mkdir -p "$APP/Contents/MacOS"
 xcrun swiftc -parse-as-library -target "$(host_target)" \
     "$ROOT/Tests/Onboarding/LessonSceneProbe.swift" \
     "$ROOT/Tests/Support/PreviewPreferences.swift" \
+    "$ROOT/Sources/App/AppIdentity.swift" \
     "$ROOT/Sources/Design/"*.swift \
     "$ROOT/Sources/LockScreen/GazeFaceMark.swift" \
     "$ROOT/Sources/LockScreen/NotchCapsule.swift" \
@@ -22,7 +23,7 @@ xcrun swiftc -parse-as-library -target "$(host_target)" \
 python3 - "$APP/Contents/Info.plist" <<'PY'
 import plistlib,sys
 with open(sys.argv[1], 'wb') as stream:
-    plistlib.dump({'CFBundleIdentifier':'com.gazeunlock.LessonSceneProbe',
+    plistlib.dump({'CFBundleIdentifier':'com.pearleseed.LessonSceneProbe',
                   'CFBundleExecutable':'LessonSceneProbe', 'CFBundleName':'Gaze Lesson Scene Probe',
                   'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'26.0'}, stream)
 PY

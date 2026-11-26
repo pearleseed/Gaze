@@ -159,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	/// Dumps what `NSApp.windows` actually contains, for diagnosing windows we cannot reach.
 	@MainActor
 	static func logAppWindows(_ note: String) {
-		let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Windows")
+		let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Windows")
 		logger.notice("--- NSApp.windows (\(note, privacy: .public)) ---")
 		for w in NSApp.windows {
 			logger.notice(
@@ -190,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 			window.ignoresMouseEvents = true
 			fixed += 1
-			Logger(subsystem: "com.gazeunlock.Gaze", category: "Windows")
+			Logger(subsystem: AppIdentity.loggerSubsystem, category: "Windows")
 				.notice("Made an invisible window click-through: \(number)")
 		}
 		return fixed

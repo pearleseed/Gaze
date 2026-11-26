@@ -18,8 +18,8 @@ import os
 @MainActor
 final class LockWatcher {
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "LockWatcher")
-	private static let renderTimingLogger = Logger(subsystem: "com.gazeunlock.Gaze", category: "RenderTiming")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "LockWatcher")
+	private static let renderTimingLogger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "RenderTiming")
 
 	private let store: FaceEnrollmentStore
 	private let lockout: LockoutManager

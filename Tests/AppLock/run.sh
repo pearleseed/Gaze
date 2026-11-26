@@ -7,6 +7,7 @@ SDK="$(oldest_usable_sdk | awk '{print $1}')"
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/gaze-app-lock-tests.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 xcrun swiftc -parse-as-library -warnings-as-errors -sdk "$SDK" -target "$(host_target)" \
+	"$ROOT/Sources/App/AppIdentity.swift" \
 	"$ROOT/Sources/Security/AppLockStore.swift" \
 	"$ROOT/Sources/Security/AppLockStateMachine.swift" \
 	"$ROOT/Sources/Security/AppLockWatcher.swift" \

@@ -30,7 +30,7 @@ final class FaceApprovalCheck {
 	private var panel: NotchCapsuleController?
 	private var busy = false
 	private var detailsPanel: ApprovalDetailsPanel?
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "FaceApproval")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "FaceApproval")
 
 	/// What the person is consenting to, shown in full beside the notch while the
 	/// check runs. The notch headline has room for one short line; this does not.

@@ -21,7 +21,7 @@ final class AppLockRecognizer {
 	/// search window.
 	static let searchTimeout: Duration = .seconds(12)
 
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "AppLockFace")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "AppLockFace")
 
 	/// Reports scan state to the shield for the caption under the face mark.
 	var onScanState: ((AppLockScanState) -> Void)?

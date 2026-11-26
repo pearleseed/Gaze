@@ -44,7 +44,7 @@ enum MovementSettingsTests {
 		try expect(Count.one.title == "One movement", "one-movement row label")
 		try expect(Count.two.title == "Two movements (recommended)", "two-movement row label marks the default")
 
-		let suite = "com.gazeunlock.MovementSettingsTests.\(UUID().uuidString)"
+		let suite = "com.pearleseed.MovementSettingsTests.\(UUID().uuidString)"
 		let defaults = UserDefaults(suiteName: suite)!
 		defer { defaults.removePersistentDomain(forName: suite) }
 		let preferences = Preferences(defaults: defaults)

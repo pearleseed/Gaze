@@ -19,7 +19,7 @@ final class LockoutManager {
 	static let maxAttempts = 6
 
 	private static let account = "lockout-state"
-	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "Lockout")
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Lockout")
 
 	struct State: Codable, Equatable {
 		var consecutiveFailures: Int = 0

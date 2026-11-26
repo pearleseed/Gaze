@@ -33,7 +33,7 @@ case "$1" in
 			if [ "${GAZE_TEST_FAILURE:-}" = app-id ]; then
 				echo 'Identifier=wrong.fixture' >&2
 			else
-				echo 'Identifier=com.gazeunlock.Gaze' >&2
+				echo 'Identifier=com.pearleseed.Gaze' >&2
 			fi
 			if [ "${GAZE_TEST_FAILURE:-}" = authority ]; then
 				echo 'Authority=Apple Development: Fixture' >&2
