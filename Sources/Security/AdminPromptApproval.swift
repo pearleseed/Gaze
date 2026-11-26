@@ -4,7 +4,7 @@ import Security
 import os
 
 /// Fills macOS's own administrator password prompts ("Allow administrator access…")
-/// after the same face check as browser approval: an enrolled face held for two
+/// after a face check: an enrolled face held for two
 /// seconds, anti-spoof, and a movement.
 ///
 /// Off by default, and only ever acts on a prompt that:
@@ -75,7 +75,7 @@ final class AdminPromptApproval {
 	private var enabled: Bool {
 		Preferences.shared.approveAdminPrompts && !Preferences.shared.isPaused
 			&& PasswordReplaySafety.isEnabled
-			&& UnlockExecutionPolicy.current.permitsBrowserApproval(passwordReplayEnabled: PasswordReplaySafety.isEnabled)
+			&& UnlockExecutionPolicy.current.permitsAdminPromptApproval(passwordReplayEnabled: PasswordReplaySafety.isEnabled)
 	}
 
 	/// Declined checks in a row; two of them pause handling so a flood of prompts

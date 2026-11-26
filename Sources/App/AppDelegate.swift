@@ -65,8 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			StartupTiming.measure(label: "screenshot-mode") { AppServices.shared.runLockScreenShootIfRequested() }
 			AppServices.shared.runAppLockPreviewIfRequested()
 			StartupTiming.measure(label: "invisible-window-sweep") { self.startInvisibleWindowSweep() }
-			// Native TipKit guidance, normal launches only: review, scan-only and
-			// browser-only modes neither configure TipKit nor mutate tip history.
+			// Native TipKit guidance, normal launches only: review and scan-only
+			// modes neither configure TipKit nor mutate tip history.
 			if AppServices.executionPolicy == .normal {
 				StartupTiming.measure(label: "tips") { GazeTips.configure() }
 			}

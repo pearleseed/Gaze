@@ -7,7 +7,6 @@ import Foundation
 /// dependency graph (vault, embedders, capture). It asserts nothing on its own.
 enum UnlockBackendKind: String, CaseIterable, Sendable {
 	case none
-	case authPlugin
 	case keystroke
 }
 

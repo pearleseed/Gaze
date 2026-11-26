@@ -2,8 +2,7 @@
 
 - `Scripts/`: toolchain discovery, app source discovery, shared bundle resource
   staging, the local build-and-run helper and the source-archive builder.
-- `Release/BuildDMG.sh`: packages an existing app into a disk image.
-- `Release/DMG/`: the disk-image layout and artwork.
+- `Release/DMG/`: the disk-image layout, artwork, and `package.py` packager.
 - `Release/Homebrew/`: the cask for the `owencope/gaze` tap.
 - `Release/ModelClearance/`: the model and asset licence inventory that the build checks.
 - `Release/Signing.sh`, `preflight.sh`, `verify.sh`: signing and release checks.
@@ -51,12 +50,9 @@ After notarizing and stapling each app, verify the bundle and package its DMG.
 ```sh
 GAZE_ARCHS=arm64 bash Tools/Release/verify.sh
 GAZE_ARCHS=x86_64 bash Tools/Release/verify.sh
-DIST=1 GAZE_ARCHS=arm64 bash Tools/Release/BuildDMG.sh
-DIST=1 GAZE_ARCHS=x86_64 bash Tools/Release/BuildDMG.sh
 ```
 
+Package each verified app with `Release/DMG/package.py` (`--arch arm64` or `--arch x86_64`).
 The images are named `Gaze-<version>-<build>-arm64.dmg` and
 `Gaze-<version>-<build>-x86_64.dmg` in `build/installers/`. Notarize and staple
-the images for distribution. The Python packager in `Release/DMG/package.py`
-also accepts `--arch arm64` or `--arch x86_64` with `--notary-profile` and
-notarizes each image as part of packaging.
+the images for distribution when using `--notary-profile`.

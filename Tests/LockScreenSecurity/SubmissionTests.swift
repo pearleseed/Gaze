@@ -97,10 +97,8 @@ private enum SubmissionTests {
 				for replay in [false, true] {
 					try expect(UnlockExecutionPolicy.scanOnly.permitsScanning(passwordReplayEnabled: replay,
 						keystrokeSelected: selected), "Diagnostic unexpectedly requires password replay")
-					for policy in [UnlockExecutionPolicy.uiReview, .browserOnly] {
-						try expect(!policy.permitsScanning(passwordReplayEnabled: replay,
-							keystrokeSelected: selected), "Non-lock mode can scan the lock screen")
-					}
+					try expect(!UnlockExecutionPolicy.uiReview.permitsScanning(passwordReplayEnabled: replay,
+						keystrokeSelected: selected), "Non-lock mode can scan the lock screen")
 					try expect(UnlockExecutionPolicy.normal.permitsScanning(passwordReplayEnabled: replay,
 						keystrokeSelected: selected) == (replay && selected), "Normal mode bypassed suspension")
 				}

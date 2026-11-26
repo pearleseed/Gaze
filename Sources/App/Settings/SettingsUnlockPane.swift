@@ -290,8 +290,7 @@ struct SettingsUnlockPane: View {
 	// MARK: - Unlocking
 
 	private var unlockSection: some View {
-		SettingsSection(title: "Unlocking",
-			footer: settings.unlockBackend == .authPlugin ? unlockFooter : nil, info: unlockInfo) {
+		SettingsSection(title: "Unlocking", info: unlockInfo) {
 			SettingToggle(title: "Unlock my Mac",
 				detail: !PasswordReplaySafety.isEnabled ? "Off — your Mac stays locked" : settings.unlockBackend == .keystroke
 					? "Use face recognition on the lock screen"
@@ -345,7 +344,7 @@ struct SettingsUnlockPane: View {
 					label: \.title)
 			}
 
-			if let problem = readinessProblem, PasswordReplaySafety.isEnabled || settings.unlockBackend == .authPlugin {
+			if let problem = readinessProblem, PasswordReplaySafety.isEnabled {
 				RowDivider(inset: 0)
 				StatusLine(kind: problem.kind, message: problem.message)
 			}
@@ -381,16 +380,6 @@ struct SettingsUnlockPane: View {
 		return capsule.message + " (" + Self.relative.localizedString(for: capsule.at, relativeTo: Date()) + ")"
 	}
 
-	/// Explains the selected option, and the plugin's removal when that is what is selected.
-	private var unlockFooter: String? {
-		if settings.unlockBackend == .authPlugin {
-			return "Legacy authorization is disabled in this source, but existing installations are unchanged. "
-				+ "Have an administrator review the installed components and Apple's lock-screen configuration separately."
-		}
-		return UnlockBackendKind.selectableCases
-			.first { $0 == settings.unlockBackend }?.detail
-	}
-
 	/// The readiness line, but only when there is something wrong with it.
 	///
 	/// A green "Ready." sitting permanently in the window is noise: the state it reports is
@@ -399,7 +388,6 @@ struct SettingsUnlockPane: View {
 		let backend: UnlockBackend =
 			switch settings.unlockBackend {
 			case .none: NoUnlockBackend()
-			case .authPlugin: AuthPluginUnlockBackend()
 			case .keystroke: KeystrokeUnlockBackend()
 			}
 

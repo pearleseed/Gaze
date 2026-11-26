@@ -93,7 +93,6 @@ struct MenuBarContent: View {
 		switch AppServices.executionPolicy {
 		case .uiReview: return "UI review — unlocking is off"
 		case .scanOnly: return "Scan-only mode — unlocking is off"
-		case .browserOnly: return "Browser approvals only"
 		case .normal: break
 		}
 		if lockout.isLockedOut { return "Locked out — password required" }
@@ -106,7 +105,6 @@ struct MenuBarContent: View {
 		if preferences.unlockBackend == .none { return "Recognition only" }
 		let backend: UnlockBackend = switch preferences.unlockBackend {
 		case .none: NoUnlockBackend()
-		case .authPlugin: AuthPluginUnlockBackend()
 		case .keystroke: KeystrokeUnlockBackend()
 		}
 		switch backend.readiness() {
@@ -121,7 +119,7 @@ struct MenuBarContent: View {
 	/// never on the displayed strings.
 	private var menuStatusOpensSettings: Bool {
 		switch AppServices.executionPolicy {
-		case .uiReview, .scanOnly, .browserOnly: return false
+		case .uiReview, .scanOnly: return false
 		case .normal: break
 		}
 		if lockout.isLockedOut { return true }
@@ -132,7 +130,6 @@ struct MenuBarContent: View {
 		if preferences.unlockBackend == .none { return false }
 		let backend: UnlockBackend = switch preferences.unlockBackend {
 		case .none: NoUnlockBackend()
-		case .authPlugin: AuthPluginUnlockBackend()
 		case .keystroke: KeystrokeUnlockBackend()
 		}
 		switch backend.readiness() {

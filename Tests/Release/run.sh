@@ -43,7 +43,7 @@ assert(source.includes('codesign --verify --strict -R "=$REFERENCE_REQUIREMENT"'
 console.log('PASS: 23 release identity and build-wiring checks; synthetic identities only.');
 NODE
 for architecture in '' 'arm64 x86_64' 'i386'; do
-	for script in build.sh Tools/Release/BuildDMG.sh Tools/Release/verify.sh; do
+	for script in build.sh Tools/Release/verify.sh; do
 		status=0
 		output="$(DIST=1 GAZE_ARCHS="$architecture" bash "$ROOT/$script" 2>&1)" || status=$?
 		test "$status" = 2 && [[ "$output" == *'exactly one release architecture'* ]] || {

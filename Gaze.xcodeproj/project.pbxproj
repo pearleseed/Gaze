@@ -103,11 +103,6 @@
 			path = FinderExtension;
 			sourceTree = "<group>";
 		};
-		891277D60B0CE3A53CE7E1BE /* Browser */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Browser;
-			sourceTree = "<group>";
-		};
 		A223BCD471A3E9DA3A29C882 /* Security */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -166,7 +161,6 @@
 			isa = PBXGroup;
 			children = (
 				DB023B9F81C3BEDF0D7809B0 /* App */,
-				891277D60B0CE3A53CE7E1BE /* Browser */,
 				41226E4EF5A027AF8D52253E /* Camera */,
 				F4E8F1974B95A9CA1607D1DB /* Companion */,
 				1EEE7171818EE55D309DD721 /* Design */,
@@ -232,7 +226,6 @@
 				1EEE7171818EE55D309DD721 /* Design */,
 				41226E4EF5A027AF8D52253E /* Camera */,
 				601BBB53E2CFBCBE0FF037B6 /* Enrollment */,
-				891277D60B0CE3A53CE7E1BE /* Browser */,
 				A223BCD471A3E9DA3A29C882 /* Security */,
 				D248DC7F2EC1BC75261335AC /* LockScreen */,
 				DB023B9F81C3BEDF0D7809B0 /* App */,

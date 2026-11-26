@@ -32,7 +32,7 @@ assert(sync.includes('presenceWatcher?.stop()'), 'sync stops the watcher when it
 assert.match(sync, /presenceWatcher = nil/, 'sync clears the watcher when it should not run');
 
 // Toggle-safe: sync touches only the presence watcher, never an unlock attempt.
-for (const name of ['lockWatcher', 'unlockService', 'browserApprovals', 'LockWatcher(', 'UnlockService(', 'GazeBrowserApproval(']) {
+for (const name of ['lockWatcher', 'LockWatcher(']) {
 	assert(!sync.includes(name), `sync leaves ${name} alone so the toggle never restarts unlock work`);
 }
 

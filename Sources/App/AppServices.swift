@@ -13,10 +13,7 @@ final class AppServices {
 	static let executionPolicy = UnlockExecutionPolicy.current
 	static var isUIReview: Bool { executionPolicy != .normal }
 	static var safetyNotice: String {
-		if executionPolicy == .browserOnly {
-			return "Browser approvals only · Mac locking and password entry are off for this run"
-		}
-		return executionPolicy == .scanOnly
+		executionPolicy == .scanOnly
 			? "Scanning enabled on lock and wake · No password entry or automatic locking"
 			: "UI review · Automatic locking and unlocking are off for this run"
 	}
@@ -38,12 +35,10 @@ final class AppServices {
 	/// Stub until the global fill shortcut is wired up; always false for now.
 	var isAutofillShortcutRegistered = false
 
-	private var unlockService: UnlockService?
 	private var lockWatcher: LockWatcher?
 	private var presenceWatcher: PresenceWatcher?
 	private var lockScreenShoot: LockScreenShoot?
 	private var appLockPreview: AppLockShield?
-	private var browserApprovals: GazeBrowserApproval?
 	private var adminPrompts: AdminPromptApproval?
 	private var sudoApprovals: SudoApproval?
 	/// One face check for admin prompts, sudo and Shortcuts, so two can never overlap.
@@ -92,7 +87,7 @@ final class AppServices {
 	/// Deliberately independent of the unlock backend: automatic locking needs
 	/// neither password storage nor replay, so backend `none` with replay
 	/// disabled still locks when the setting is on. Only the normal launch
-	/// policy permits it — scan-only, UI review, browser-only and any other
+	/// policy permits it — scan-only, UI review and any other
 	/// prohibited policy stop and clear the watcher instead.
 	///
 	/// Idempotent: calling it when the watcher already matches the desired
@@ -117,8 +112,8 @@ final class AppServices {
 	///
 	/// The watcher, shield and recognizer share one state machine, so an
 	/// unlock lasts across shield shows until the "Lock again" option says
-	/// otherwise. Only the normal launch policy runs it: review, scan-only
-	/// and browser-only modes never cover other apps with a shield.
+	/// otherwise. Only the normal launch policy runs it: review and
+	/// scan-only modes never cover other apps with a shield.
 	///
 	/// Idempotent like `syncPresenceWatcher`: a running stack is left alone,
 	/// and stopping drops the in-memory unlocks with it — turning App Lock
@@ -151,18 +146,12 @@ final class AppServices {
 	///
 	/// Safe to call repeatedly, and it must be — changing the backend in Settings used to
 	/// do nothing until the app was relaunched, which left the user on a setting that
-	/// looked active while nothing was watching for the lock. Selecting the plugin without
-	/// installing it was the worst case: neither path running, and no indication why.
+	/// looked active while nothing was watching for the lock.
 	func startUnlockTrigger() {
 		// Walk-away locking first, before any early return below: prohibited
 		// policies must stop a watcher left over from a mode switch, and an
 		// enabled setting must start one even with backend none / replay off.
 		syncPresenceWatcher()
-		if Self.executionPolicy.permitsBrowserApproval(passwordReplayEnabled: PasswordReplaySafety.isEnabled), browserApprovals == nil {
-			let service = GazeBrowserApproval(store: store, lockout: lockout)
-			service.start()
-			browserApprovals = service
-		}
 		// Polls only while the setting is on; it checks the setting on every tick.
 		let check = faceApprovals ?? FaceApprovalCheck(store: store, lockout: lockout)
 		faceApprovals = check
@@ -203,27 +192,7 @@ final class AppServices {
 		// it, and removes the race entirely.
 		_ = LockScreenSpace.shared
 
-		// The answering service runs whatever the backend is.
-		//
-		// It was started only for `.authPlugin`, on the reasoning that the plugin was the
-		// only thing that would ever ask. That is no longer true: the PAM module that
-		// authorises `sudo` is a second client of the same service, and it is useful with
-		// the keystroke backend — which is the one most people are on, because the plugin
-		// costs Touch ID and Apple Watch unlock to install.
-		//
-		// Starting it costs an idle XPC listener. It answers questions; it does not open a
-		// camera until something asks one.
-		if unlockService == nil {
-			let service = UnlockService(store: store, lockout: lockout)
-			service.start()
-			unlockService = service
-		}
-
 		switch Preferences.shared.unlockBackend {
-		case .authPlugin:
-			// The plugin calls us; the listener above is all that is needed.
-			break
-
 		case .keystroke:
 			guard PasswordReplaySafety.isEnabled else { return }
 			// Nothing calls us here — we have to notice the lock ourselves.

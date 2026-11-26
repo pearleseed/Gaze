@@ -99,9 +99,6 @@ unset GAZE_TEST_FAILURE
 check pass 'Architecture: arm64'
 set_architecture 'arm64 x86_64'
 check fail 'expected only arm64'
-status=0
-output="$(DIST=1 GAZE_DMG_APP="$APP" bash "$ROOT/Tools/Release/BuildDMG.sh" 2>&1)" || status=$?
-test "$status" != 0 && [[ "$output" == *'Gaze: expected only arm64'* ]] || { echo "$output"; exit 1; }
 set_architecture x86_64
 check fail 'expected only arm64'
 GAZE_ARCHS=x86_64 check pass 'Architecture: x86_64'

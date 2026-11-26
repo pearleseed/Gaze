@@ -560,6 +560,7 @@ final class Preferences {
 			defaults.string(forKey: Key.detectionDistance)
 			.flatMap(DetectionDistance.init(rawValue:)) ?? .standard
 		showsMenuBarIcon = defaults.object(forKey: Key.showsMenuBarIcon) as? Bool ?? true
+		// Legacy or unrecognized raw values (e.g. removed "authPlugin") decode safely to .none.
 		unlockBackend =
 			defaults.string(forKey: Key.unlockBackend)
 			.flatMap(UnlockBackendKind.init(rawValue:)) ?? .none

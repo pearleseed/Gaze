@@ -65,7 +65,7 @@ struct HandoffFixture {
 		check("--settings --settings", SettingsLaunchHandoff.isEligibleLaunch(arguments: ["--settings", "--settings"]), true)
 		for bypass in [
 			["--agent"], ["--setup"], ["--setup-step"], ["--setup-step=face"],
-			["--ui-review"], ["--scan-only"], ["--browser-only"],
+			["--ui-review"], ["--scan-only"],
 			["--shoot-lockscreen"], ["--capture-dataset"], ["--startup-diagnostics"],
 			["--debug-windows"], ["--other"], ["settings"],
 			["--settings", "--agent"], ["--agent", "--settings"],

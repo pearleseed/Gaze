@@ -24,7 +24,7 @@ enum SettingsLaunchHandoff {
 	/// - Parameter arguments: argv after the executable
 	///   (`Array(CommandLine.arguments.dropFirst())` in production).
 	/// - Returns: true for `[]`, or when `--settings` is present without any of
-	///   `--agent`, `--scan-only`, `--ui-review`, or `--browser-only`. Those modes
+	///   `--agent`, `--scan-only`, or `--ui-review`. Those modes
 	///   change what the new process would do, so they bypass the handoff
 	///   unchanged — as does anything without `--settings` at all. `--settings`
 	///   combined with `--settings-pane=<name>` hands off; the pane is staged
@@ -39,7 +39,7 @@ enum SettingsLaunchHandoff {
 	/// Flags that put the new process into a service or review mode. Handing off
 	/// would silently drop that mode, so these bypass the handoff unchanged.
 	private static let serviceModeFlags: Set<String> = [
-		"--agent", "--scan-only", "--ui-review", "--browser-only",
+		"--agent", "--scan-only", "--ui-review",
 	]
 
 	/// Shared-defaults key staging a `--settings-pane=` request for the running app.

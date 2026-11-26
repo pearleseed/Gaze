@@ -6,10 +6,6 @@ enum UnlockBackendKind: String, CaseIterable, Sendable {
 	/// Recognition runs, but nothing is unlocked. The safe default and a usable way to
 	/// test enrolment without touching system authentication at all.
 	case none
-	/// Kept only so an existing installation can read its saved preference and keep the
-	/// recovery path alive. This backend is deliberately absent from `selectableCases`:
-	/// routing the lock screen through it can leave the user with no way back in.
-	case authPlugin
 	/// The stored password is replayed into the login window as keystrokes.
 	case keystroke
 
@@ -19,7 +15,6 @@ enum UnlockBackendKind: String, CaseIterable, Sendable {
 	var title: String {
 		switch self {
 		case .none: return "Recognition only"
-		case .authPlugin: return "Authorization plugin"
 		case .keystroke: return "Unlock my Mac"
 		}
 	}
@@ -29,9 +24,6 @@ enum UnlockBackendKind: String, CaseIterable, Sendable {
 		switch self {
 		case .none: return "eye.fill"
 		case .keystroke: return "lock.open.fill"
-		// Not selectable, but a saved preference can still be this — the row exists only
-		// to tell the user how to get their lock screen back.
-		case .authPlugin: return "exclamationmark.triangle.fill"
 		}
 	}
 
@@ -39,11 +31,6 @@ enum UnlockBackendKind: String, CaseIterable, Sendable {
 		switch self {
 		case .none:
 			return "See recognition working without wiring it to anything."
-		case .authPlugin:
-			return """
-				Legacy face-only authorization is disabled. An old installed plugin must be \
-				reviewed separately; this app does not change your Mac's login policy.
-				"""
 		case .keystroke:
 			return """
 				Enters your password for you when you're recognised. Touch ID keeps \
@@ -166,38 +153,10 @@ struct KeystrokeUnlockBackend: UnlockBackend {
 	}
 }
 
-// MARK: - Authorization plugin
-
-/// Authorises the unlock through a SecurityAgent plugin.
-///
-/// The plugin is a bundle in `/Library/Security/SecurityAgentPlugins/` that macOS loads
-/// into the SecurityAgent process at the lock screen. It is the only sanctioned way to
-/// put our own UI there and to have the *system* perform the unlock rather than us
-/// replaying a password.
-///
-/// Installing it requires rewriting the `system.login.screensaver` authorization rule
-/// from `use-login-window-ui` to `authenticate-session-owner-or-admin`, which drops the
-/// lock screen onto the legacy code path. That is what costs Touch ID and Apple Watch
-/// unlock — Apple's modern path does not load third-party plugins.
-struct AuthPluginUnlockBackend: UnlockBackend {
-	let kind = UnlockBackendKind.authPlugin
-
-	static let pluginPath = "/Library/Security/SecurityAgentPlugins/Gaze.bundle"
-
-	@MainActor func readiness() -> BackendReadiness {
-		.unavailable("Legacy face-only authorization is disabled. Use macOS authentication and review any previously installed plugin separately.")
-	}
-
-	@MainActor func unlock() async throws {
-		throw UnlockError.pluginNotBuilt
-	}
-}
-
 enum UnlockError: LocalizedError {
 	case verificationRequired
 	case noPassword
 	case eventSourceUnavailable
-	case pluginNotBuilt
 
 	var errorDescription: String? {
 		switch self {
@@ -207,29 +166,6 @@ enum UnlockError: LocalizedError {
 			return "No account password is stored."
 		case .eventSourceUnavailable:
 			return "Could not post keyboard events. Check Accessibility access."
-		case .pluginNotBuilt:
-			return "The authorization plugin isn't built yet — see Plugin/README.md."
 		}
-	}
-}
-
-// MARK: - Authorization database
-
-enum AuthorizationRules {
-	/// True when the lock screen still uses Apple's built-in UI, which excludes
-	/// third-party plugins.
-	static func screensaverUsesPlugins() -> Bool {
-		var rights: CFDictionary?
-		let status = "system.login.screensaver".withCString { name in
-			AuthorizationRightGet(name, &rights)
-		}
-		guard status == errAuthorizationSuccess, let dict = rights as? [String: Any] else {
-			return false
-		}
-
-		if let rule = dict["rule"] as? [String] {
-			return !rule.contains("use-login-window-ui")
-		}
-		return false
 	}
 }

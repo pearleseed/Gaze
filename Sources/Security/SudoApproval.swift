@@ -54,8 +54,7 @@ final class SudoApproval {
 		let path = folder.appendingPathComponent(Self.socketName).path
 		var existing = stat()
 		if lstat(path, &existing) == 0 {
-			// A live server keeps its socket: only clear a stale one, same as
-			// the browser socket listener, so two Gaze copies never fight.
+			// A live server keeps its socket: only clear a stale one so two Gaze copies never fight.
 			guard existing.st_uid == geteuid(), (existing.st_mode & S_IFMT) == S_IFSOCK else {
 				Self.logger.error("The sudo socket path is not Gaze's own socket; not listening.")
 				return

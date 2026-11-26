@@ -5,7 +5,7 @@
 # with a unique test bundle ID, then verifies:
 #   1. Pure eligibility: bare and exact `--settings` launches are eligible; every
 #      flagged invocation (--agent, --setup, --setup-step, --ui-review, --scan-only,
-#      --browser-only, anything else) bypasses; no-existing-instance redirects false.
+#      anything else) bypasses; no-existing-instance redirects false.
 #   2. Two-process handoff: a first fixture instance becomes the "running app" (writes
 #      a per-PID service marker); launching the same executable with `--settings`
 #      must make the first instance receive applicationShouldHandleReopen and exit(0)

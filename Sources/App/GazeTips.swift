@@ -3,8 +3,8 @@ import os
 
 /// Owns TipKit configuration.
 ///
-/// Configure once at launch in normal mode only; review, scan-only and
-/// browser-only modes never configure and never mutate tip history. Failures
+/// Configure once at launch in normal mode only; review and scan-only
+/// modes never configure and never mutate tip history. Failures
 /// log one fixed, non-sensitive message. The datastore is never reset here.
 @MainActor
 enum GazeTips {
