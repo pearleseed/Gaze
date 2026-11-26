@@ -83,7 +83,7 @@ final class DatasetCapture {
 				"label": label.rawValue,
 				"device": deviceNote,
 				"startedAt": Date().formatted(.iso8601),
-				"cropMargin": String(describing: Liveness.cropMargin),
+				"cropMargin": String(describing: FaceAligner.contextCropMargin),
 				"side": String(Self.side),
 			]
 			try JSONSerialization.data(withJSONObject: info, options: .prettyPrinted)
@@ -112,7 +112,7 @@ final class DatasetCapture {
 		// The same crop the detector will use, from the same code. This is the whole
 		// reason the tool lives inside the app.
 		guard
-			let crop = FaceAligner.contextCrop(sample, side: Self.side, margin: Liveness.cropMargin),
+			let crop = FaceAligner.contextCrop(sample, side: Self.side),
 			let jpeg = Self.encode(crop)
 		else { return }
 

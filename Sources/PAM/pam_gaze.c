@@ -1,7 +1,7 @@
 /* pam_gaze.c: PAM authentication module that lets Gaze approve `sudo` with a
  * face check instead of a password.
  *
- * Installed as `auth sufficient /usr/local/lib/pam/pam_gaze.so` in
+ * Installed as `auth sufficient /Library/Security/Gaze/pam_gaze.so` in
  * /etc/pam.d/sudo_local. "sufficient" is what makes this safe to fail: whenever
  * this module returns PAM_IGNORE, PAM carries on to the normal password prompt
  * as if Gaze were not there. It only ever returns PAM_SUCCESS after Gaze itself
@@ -22,7 +22,7 @@
  * connecting, this module reads the listener's audit token
  * (LOCAL_PEERTOKEN) and requires its code signature to satisfy the designated
  * requirement stored in the root-owned file
- * /usr/local/lib/pam/pam_gaze.requirement (written by Gaze's installer as
+ * /Library/Security/Gaze/pam_gaze.requirement (written by Gaze's installer as
  * root, mode 0444). Anything unverifiable falls through to PAM_IGNORE.
  */
 
@@ -49,7 +49,7 @@
 #include <unistd.h>
 
 #define GAZE_SOCKET_REL "/Library/Application Support/Gaze/sudo.sock"
-#define GAZE_REQUIREMENT_PATH "/usr/local/lib/pam/pam_gaze.requirement"
+#define GAZE_REQUIREMENT_PATH "/Library/Security/Gaze/pam_gaze.requirement"
 #define GAZE_REQUIREMENT_MAX 1024
 #define GAZE_COMMAND_MAX 300
 #define GAZE_MORE " [+more]"

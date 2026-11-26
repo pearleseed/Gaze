@@ -5,7 +5,8 @@ node - "$ROOT" <<'NODE'
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const root = process.argv[2];
-const app = fs.readFileSync(`${root}/Sources/App/GazeApp.swift`, 'utf8');
+const app = fs.readFileSync(`${root}/Sources/App/AppServices.swift`, 'utf8');
+const delegate = fs.readFileSync(`${root}/Sources/App/AppDelegate.swift`, 'utf8');
 
 const syncStart = app.indexOf('func syncPresenceWatcher()');
 assert(syncStart >= 0, 'AppServices exposes syncPresenceWatcher() for the Settings toggle');
@@ -59,7 +60,7 @@ const rest = app.slice(0, syncStart) + app.slice(syncEnd);
 assert(!rest.includes('PresenceWatcher(store:'), 'no backend-branch watcher creation remains');
 
 // Startup path reaches it: launch calls startUnlockTrigger, whose first act is sync.
-assert(app.includes('AppServices.shared.startUnlockTrigger()'), 'launch still enters startUnlockTrigger');
+assert(delegate.includes('AppServices.shared.startUnlockTrigger()'), 'launch still enters startUnlockTrigger');
 
 console.log('Presence lifecycle wiring checks passed: idempotent sync, stop/clear on disable, startup ordering before every early return.');
 NODE

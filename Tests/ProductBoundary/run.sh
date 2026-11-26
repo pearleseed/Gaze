@@ -14,7 +14,7 @@ if grep -qE 'AutofillService|AutofillWatcher|SavedAppStore|GlobalHotKey|Autofill
 	echo "FAIL: autofill runtime wiring remains in Gaze" >&2; exit 1
 fi
 echo "PASS Gaze has no autofill runtime wiring or saved-app store initialization"
-if grep -qE 'case .*autofill|\.autofill|autofillOnActivation' "$ROOT/Sources/App/SettingsView.swift" "$ROOT/Sources/App/Preferences.swift"; then
+if grep -qE 'case .*autofill|\.autofill|autofillOnActivation' "$ROOT/Sources/App/Settings/"*.swift "$ROOT/Sources/App/Preferences.swift"; then
 	echo "FAIL: autofill pane or preference remains" >&2; exit 1
 fi
 echo "PASS Gaze exposes no autofill pane or activation preference"

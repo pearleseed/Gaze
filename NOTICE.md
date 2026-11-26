@@ -149,10 +149,9 @@ the app.
 
 ### FaceIDKit
 
-The animations in setup are **Aviorrok's**, licensed to this app alone and explicitly
-not for redistribution. Kept out of git entirely rather than merely out of the public
-repository, because history is forever. `SetupMark` substitutes system symbols when
-the framework is absent, so setup works and simply looks plainer.
+Earlier versions used setup animations from **Aviorrok's** private FaceIDKit framework.
+The framework was licensed to this app alone. Current setup animations are rendered
+by the bundled Gaze companion code.
 
 ### SkyLight window server
 
@@ -168,8 +167,9 @@ The symbols can change or be removed in any macOS release.
 
 ## MediaPipe Iris
 
-`Resources/IrisLandmarks.mlpackage` is Google's MediaPipe Iris landmark model
-(https://github.com/google-ai-edge/mediapipe), Copyright Google LLC, licensed under the
-Apache License 2.0. The weights come from the PyTorch port at
+`IrisLandmarks.mlmodelc` is the compiled build of Google's MediaPipe Iris landmark
+model (https://github.com/google-ai-edge/mediapipe), Copyright Google LLC, licensed
+under the Apache License 2.0. The weights come from the PyTorch port at
 https://github.com/cedriclmenard/irislandmarks.pytorch (Apache License 2.0), converted to
-Core ML for Gaze. The licence text is in `ThirdParty/MediaPipeIris/LICENSE`.
+Core ML for Gaze. The licence text is in `ThirdParty/MediaPipeIris/LICENSE` and
+ships with the model as `MediaPipeIris-LICENSE.txt`.

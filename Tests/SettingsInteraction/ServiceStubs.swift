@@ -11,7 +11,6 @@ import SwiftUI
 }
 
 @MainActor final class FixtureDriver {
-    var changeLoginItem: ((Bool) -> Void)?
     var refresh: (() -> Void)?
 }
 

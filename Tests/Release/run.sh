@@ -34,7 +34,7 @@ const fs = require('node:fs');
 const source = fs.readFileSync(`${process.argv[2]}/build.sh`, 'utf8');
 assert(source.indexOf('gaze_signing_identity ') < source.indexOf('\nrequire_toolchain'));
 assert(source.indexOf('gaze_signing_identity ') < source.indexOf('mktemp -d'));
-assert(source.includes('DEFAULT_OUTPUT="$ROOT/build/release/Gaze.app"'));
+assert(source.includes('DEFAULT_OUTPUT="$ROOT/build/release/$GAZE_ARCHS/Gaze.app"'));
 assert(source.includes('SIGNING_FLAGS+=(--timestamp)'));
 assert(source.includes('SIGNING_FLAGS=(--options runtime)'));
 assert(source.indexOf("'^Authority=Developer ID Application: '") < source.indexOf('mv "$STAGE" "$APP"'));
@@ -42,6 +42,19 @@ assert(source.indexOf("'^Timestamp='") < source.indexOf('mv "$STAGE" "$APP"'));
 assert(source.includes('codesign --verify --strict -R "=$REFERENCE_REQUIREMENT"'));
 console.log('PASS: 23 release identity and build-wiring checks; synthetic identities only.');
 NODE
+for architecture in '' 'arm64 x86_64' 'i386'; do
+	for script in build.sh Tools/Release/BuildDMG.sh Tools/Release/verify.sh; do
+		status=0
+		output="$(DIST=1 GAZE_ARCHS="$architecture" bash "$ROOT/$script" 2>&1)" || status=$?
+		test "$status" = 2 && [[ "$output" == *'exactly one release architecture'* ]] || {
+			printf 'FAIL: %s accepted release architecture %q\n%s\n' "$script" "$architecture" "$output" >&2
+			exit 1
+		}
+	done
+done
+status=0
+output="$(python3 "$ROOT/Tools/Release/DMG/package.py" 2>&1)" || status=$?
+test "$status" = 2 && [[ "$output" == *'Select --arch arm64'* ]] || { echo "$output"; exit 1; }
 bash "$ROOT/Tests/Release/verify-artifact.sh"
 bash "$ROOT/Tests/Release/preflight-checks.sh"
 bash "$ROOT/Tests/Release/source-archive.sh"

@@ -1,10 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BUILD="$(mktemp -d "$ROOT/build/onboarding-checks.XXXXXX")"
 source "$ROOT/Tools/Scripts/toolchain.sh"
+source "$ROOT/Tools/Scripts/BundleResources.sh"
 require_toolchain
-SDK="$(oldest_usable_sdk | awk '{print $1}')"
+SDK="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
+mkdir -p "$ROOT/build"
+BUILD="$(mktemp -d "$ROOT/build/onboarding-checks.XXXXXX")"
 APP="$BUILD/Gaze Onboarding Review.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
@@ -12,10 +14,12 @@ xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
 	"$ROOT/Tests/Onboarding/OnboardingTests.swift" \
 	"$ROOT/Tests/Onboarding/LessonMotionTests.swift" \
 	"$ROOT/Tests/Support/PreviewPreferences.swift" \
-	"$ROOT/Sources/App/Theme.swift" \
+	"$ROOT/Sources/Design/"*.swift \
 	"$ROOT/Sources/App/DesktopWallpaper.swift" \
 	"$ROOT/Sources/LockScreen/GazeFaceMark.swift" \
 	"$ROOT/Sources/LockScreen/NotchCapsule.swift" \
+	"$ROOT/Sources/LockScreen/NotchCapsuleModel.swift" \
+	"$ROOT/Sources/LockScreen/NotchAppearance.swift" \
 	"$ROOT/Sources/LockScreen/WallpaperGlass.swift" \
 	"$ROOT/Sources/LockScreen/NativeUnlockAnimation.swift" \
 	"$ROOT/Sources/LockScreen/NativeMovementMark.swift" \
@@ -31,10 +35,9 @@ xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
 	"$ROOT/Sources/Setup/GazePeekingCompanion.swift" \
 	"$ROOT/Sources/Setup/SetupBackdrop.swift" \
 	"$ROOT/Sources/Setup/SetupScaffold.swift" \
-"$ROOT/Sources/Setup/SetupAccessibilityDemo.swift" \
-"$ROOT/Sources/Setup/SetupShot.swift" \
+	"$ROOT/Sources/Setup/SetupAccessibilityDemo.swift" \
+	"$ROOT/Sources/Setup/SetupShot.swift" \
 	"$ROOT/Sources/Setup/SetupControls.swift" \
-	"$ROOT/Sources/Setup/SetupMark.swift" \
 	"$ROOT/Sources/Setup/SetupWelcomeStep.swift" \
 	"$ROOT/Sources/Setup/GazeWelcomeTour.swift" \
 	"$ROOT/Sources/Setup/GazeTourSizing.swift" \
@@ -54,9 +57,9 @@ xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
 	"$ROOT/Sources/Setup/SetupDoneStep.swift" \
 	"$ROOT/Tests/Support/CompanionCapture.swift" \
 	-o "$APP/Contents/MacOS/OnboardingReview"
-cp "$ROOT/build/Gaze.app/Contents/Resources/AppIcon.icns" "$APP/Contents/Resources/"
+compile_gaze_app_icon "$ROOT" "$APP/Contents/Resources" "$MIN_SDK_MAJOR.0" >/dev/null
 mkdir -p "$APP/Contents/Resources/Art"
-for artwork in tour-recognition tour-privacy how-unlock tour-practice how-keychain tour-rounded-recognition tour-rounded-privacy tour-rounded-unlock tour-rounded-practice tour-rounded-keychain onboarding-recognition onboarding-local onboarding-unlock onboarding-choice onboarding-success onboarding-failure movement-left movement-right movement-nod movement-blink movement-mouth; do
+for artwork in tour-backdrop setup-accessibility setup-camera-prompt setup-password; do
 	cp "$ROOT/Resources/Art/$artwork.png" "$APP/Contents/Resources/Art/"
 done
 cp "$ROOT/ThirdParty/TourKit/LICENSE" "$APP/Contents/Resources/TourKit-LICENSE.txt"

@@ -9,13 +9,10 @@ import Vision
 /// reports how confidently it sees a *spoof* — a held phone, a screen, a printed photo.
 /// From that dataset, class `"1"` is a spoof and `"0"` is a live face.
 ///
-/// This is a different signal from the passive texture model (`CoreMLLiveness`): it judges
-/// the face region itself rather than the face's texture, so it catches the held-photo
-/// attack that texture can't. Runs on the `contextCrop` (face plus margin) rather than the
-/// whole frame, so background clutter outside the face can't sway the verdict — while the
-/// margin keeps the tells at the edges (a bezel, a screen edge, paper border) in frame.
+/// The classifier uses `contextCrop` to keep nearby signals such as a screen bezel or
+/// paper border in frame and limit the influence of background clutter.
 /// `@unchecked` because `VNCoreMLModel` is not marked `Sendable`, though running a request
-/// against it is thread-safe — same reason as `CoreMLEmbedder` and `CoreMLLiveness`.
+/// against it is thread-safe.
 struct SpoofDetector: @unchecked Sendable {
 
 	/// The dataset's spoof class. `"0"` is a live face.

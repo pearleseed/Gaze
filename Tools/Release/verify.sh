@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-APP="${1:-$ROOT/build/release/Gaze.app}"
+. "$ROOT/Tools/Release/Architecture.sh"
+gaze_require_release_arch "${GAZE_ARCHS:-}" || exit 2
+APP="${1:-$ROOT/build/release/$GAZE_ARCHS/Gaze.app}"
 BUNDLE_ID=com.gazeunlock.Gaze
 fail() { echo "FAIL: $*" >&2; exit 1; }
 test -d "$APP" || fail "Release bundle missing: $APP"
@@ -11,6 +13,7 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")" = "$BU
 EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$PLIST" 2>/dev/null)" || fail "Unexpected executable"
 test "$EXECUTABLE" = Gaze || fail "Unexpected executable"
 test -x "$APP/Contents/MacOS/$EXECUTABLE" || fail "Gaze executable missing"
+gaze_verify_bundle_arch "$APP" "$GAZE_ARCHS"
 test -f "$APP/Contents/PkgInfo" || fail "Bundle PkgInfo missing"
 for key in CFBundleName CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion NSCameraUsageDescription; do
 	/usr/libexec/PlistBuddy -c "Print :$key" "$PLIST" >/dev/null 2>&1 || fail "Info.plist key $key missing"
@@ -37,12 +40,8 @@ for entitlement in get-task-allow cs.allow-jit cs.disable-library-validation cs.
 done
 xcrun stapler validate "$APP" || fail "Stapled notarization ticket not validated"
 spctl --assess --type execute --verbose=2 "$APP" || fail "Gatekeeper did not accept the release bundle"
-# Distribution supports both Apple Silicon and Intel Macs.
-ARCHS="$(lipo -archs "$APP/Contents/MacOS/$EXECUTABLE")" || fail "Architecture check unavailable"
-printf '%s\n' "$ARCHS" | grep -qw "arm64" || fail "Missing arm64 slice"
-printf '%s\n' "$ARCHS" | grep -qw "x86_64" || fail "Missing x86_64 slice"
-echo "PASS: bundle, signed identifier, models, signature, timestamp, entitlements, notarization ticket and Gatekeeper checks"
+echo "PASS: bundle, architecture, signed identifier, models, signature, timestamp, entitlements, notarization ticket and Gatekeeper checks"
 echo "Team: $TEAM"
-echo "Architecture: $(lipo -archs "$APP/Contents/MacOS/$EXECUTABLE")"
+echo "Architecture: $GAZE_ARCHS"
 echo "Executable SHA-256: $(shasum -a 256 "$APP/Contents/MacOS/$EXECUTABLE" | awk '{print $1}')"
 echo "This is artifact validation, NOT proof of safe recognition, working lock-screen unlock, redistribution rights or clean-install compatibility."

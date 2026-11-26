@@ -257,7 +257,7 @@ struct SetupCameraAccessContent: View {
 			finishButtonTitle: "\(primaryTitle)",
 			onFinish: actionTitle != nil ? onRequest : onClose,
 			onClose: onClose,
-			pageMedia: { _ in AnyView(SetupShot(source: .image("setup-camera-prompt"), aspectRatio: 516.0 / 562.0, cornerRadius: 26)) },
+			pageMedia: { _ in AnyView(SetupShot(name: "setup-camera-prompt", aspectRatio: 516.0 / 562.0, cornerRadius: 26)) },
 			primaryEnabled: actionTitle != nil ? !isRequesting : true,
 			showsPrimaryButton: true,
 			footer: position.map { AnyView(SetupProgress(position: $0)) },

@@ -1,0 +1,6 @@
+PRODUCT_NAME = GazeFinder
+PRODUCT_BUNDLE_IDENTIFIER = com.gazeunlock.Gaze.Finder
+INFOPLIST_FILE = $(DERIVED_FILE_DIR)/Finder-Info.plist
+CODE_SIGN_ENTITLEMENTS = Sources/FinderExtension/GazeFinder.entitlements
+APPLICATION_EXTENSION_API_ONLY = YES
+SKIP_INSTALL = YES

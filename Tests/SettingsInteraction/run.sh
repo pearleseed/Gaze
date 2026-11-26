@@ -8,9 +8,12 @@ mkdir -p "$OUTPUT"
 rm -f "$OUTPUT/results.json"
 APP="$OUTPUT/Gaze Settings Fixture.app"
 mkdir -p "$APP/Contents/MacOS"
-python3 "$ROOT/Tests/SettingsInteraction/generate.py" "$OUTPUT/SettingsFixture.swift"
+python3 "$ROOT/Tests/SettingsInteraction/generate.py" "$OUTPUT/CaptureFixture.swift"
 xcrun swiftc -parse-as-library -target "$(host_target)" \
-    "$ROOT/Sources/App/Theme.swift" \
+    "$ROOT/Sources/Design/"*.swift \
+    "$ROOT/Sources/App/Settings/SettingsBehaviourSection.swift" \
+    "$ROOT/Sources/App/Settings/SettingsUpdatesSection.swift" \
+    "$ROOT/Sources/App/Settings/SettingsSourceBuildSection.swift" \
     "$ROOT/Sources/Setup/SetupScaffold.swift" \
     "$ROOT/Sources/App/ReleaseNotesView.swift" \
     "$ROOT/Sources/Setup/SetupAccessibilityDemo.swift" \
@@ -21,9 +24,10 @@ xcrun swiftc -parse-as-library -target "$(host_target)" \
     "$ROOT/Sources/Enrollment/EnrollmentRing.swift" \
     "$ROOT/Tests/Onboarding/Stubs.swift" \
     "$ROOT/Tests/SettingsInteraction/ServiceStubs.swift" \
+    "$ROOT/Tests/SettingsInteraction/SettingsFixture.swift" \
     "$ROOT/Tests/SettingsInteraction/Tests.swift" \
     "$ROOT/Tests/SettingsInteraction/CaptureTests.swift" \
-    "$OUTPUT/SettingsFixture.swift" "$OUTPUT/CaptureFixture.swift" -o "$APP/Contents/MacOS/SettingsFixture"
+    "$OUTPUT/CaptureFixture.swift" -o "$APP/Contents/MacOS/SettingsFixture"
 python3 - "$APP/Contents/Info.plist" <<'PY'
 import plistlib,sys
 with open(sys.argv[1], 'wb') as stream:

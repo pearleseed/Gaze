@@ -5,10 +5,18 @@ SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gaze-release-fixture.XXXXXX")"
 trap 'rm -rf "$SCRATCH"' EXIT
 APP="$SCRATCH/Gaze.app"
 BIN="$SCRATCH/bin"
-mkdir -p "$BIN" "$APP/Contents/MacOS" "$APP/Contents/Resources/FaceEmbedding.mlmodelc" "$APP/Contents/Resources/Spoof.mlmodelc"
+FINDER="$APP/Contents/PlugIns/GazeFinder.appex/Contents/MacOS/GazeFinder"
+PAM="$APP/Contents/Resources/pam_gaze.so"
+mkdir -p "$BIN" "$APP/Contents/MacOS" "$APP/Contents/Resources/FaceEmbedding.mlmodelc" \
+	"$APP/Contents/Resources/Spoof.mlmodelc" "$(dirname "$FINDER")"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-printf 'synthetic fixture; never execute\n' > "$APP/Contents/MacOS/Gaze"
+set_architecture() {
+	for binary in "$APP/Contents/MacOS/Gaze" "$FINDER" "$PAM"; do
+		printf '%s\n' "$1" > "$binary"
+	done
+}
+set_architecture arm64
 chmod +x "$APP/Contents/MacOS/Gaze"
 cp "$ROOT/Resources/Gaze.entitlements" "$SCRATCH/entitlements.plist"
 export GAZE_TEST_ENTITLEMENTS="$SCRATCH/entitlements.plist"
@@ -55,13 +63,12 @@ test "$1" = --assess && test "${GAZE_TEST_FAILURE:-}" != gatekeeper
 MOCK
 cat > "$BIN/lipo" <<'MOCK'
 #!/bin/bash
-# A release artifact is universal. GAZE_TEST_FAILURE=architecture drops the
-# Intel slice so the verifier's rejection of a host-only build is exercised.
 test "$1" = -archs || exit 1
-if [ "${GAZE_TEST_FAILURE:-}" = architecture ]; then echo arm64; else echo "x86_64 arm64"; fi
+cat "$2"
 MOCK
 chmod +x "$BIN/"*
 export PATH="$BIN:$PATH"
+export GAZE_ARCHS=arm64
 COUNT=0
 check() {
 	local expected="$1" marker="$2" actual=0
@@ -88,9 +95,25 @@ export GAZE_TEST_FAILURE=adhoc
 check fail 'No signing authority'
 export GAZE_TEST_FAILURE=authority
 check fail 'Developer ID Application signature required'
-export GAZE_TEST_FAILURE=architecture
-check fail 'Missing x86_64 slice'
 unset GAZE_TEST_FAILURE
+check pass 'Architecture: arm64'
+set_architecture 'arm64 x86_64'
+check fail 'expected only arm64'
+status=0
+output="$(DIST=1 GAZE_DMG_APP="$APP" bash "$ROOT/Tools/Release/BuildDMG.sh" 2>&1)" || status=$?
+test "$status" != 0 && [[ "$output" == *'Gaze: expected only arm64'* ]] || { echo "$output"; exit 1; }
+set_architecture x86_64
+check fail 'expected only arm64'
+GAZE_ARCHS=x86_64 check pass 'Architecture: x86_64'
+printf 'arm64 x86_64\n' > "$FINDER"
+GAZE_ARCHS=x86_64 check fail 'GazeFinder: expected only x86_64'
+set_architecture x86_64
+printf 'arm64\n' > "$PAM"
+GAZE_ARCHS=x86_64 check fail 'pam_gaze.so: expected only x86_64'
+set_architecture arm64
+mv "$PAM" "$SCRATCH/module"
+check fail 'Missing release binary: Contents/Resources/pam_gaze.so'
+mv "$SCRATCH/module" "$PAM"
 for entitlement in get-task-allow cs.allow-jit cs.disable-library-validation cs.allow-dyld-environment-variables cs.allow-unsigned-executable-memory cs.disable-executable-page-protection; do
 	/usr/libexec/PlistBuddy -c "Add :com.apple.security.$entitlement bool true" "$GAZE_TEST_ENTITLEMENTS"
 	check fail 'Unsafe release entitlement'
@@ -125,5 +148,5 @@ chmod +x "$APP/Contents/MacOS/Gaze"
 mv "$APP/Contents/Info.plist" "$SCRATCH/Info.plist"
 check fail 'Bundle Info.plist missing'
 mv "$SCRATCH/Info.plist" "$APP/Contents/Info.plist"
-check pass 'Architecture: x86_64 arm64'
+check pass 'Architecture: arm64'
 echo "PASS: $COUNT artifact-verifier checks; synthetic bundle, mocked signing/notarization tools, no network or app launch."

@@ -1,30 +1,14 @@
 # Tests
 
-Each folder is a self-contained suite. Run one with `bash Tests/<Name>/run.sh`. None of them opens the camera, reads real credentials or touches the Keychain, except `MultiFace`, which downloads two synthetic faces to check recognition on photos with several people.
+Run the local suites on macOS with Xcode, Python 3 and Node.js.
 
-- `AppReadiness`
-- `Enrollment`
-- `EnrollmentStorage`
-- `Hardening`
-- `HeadPose`
-- `LockScreenSecurity`
-- `MovementSettings`
-- `MultiFace`
-- `Notch`
-- `Onboarding`
-- `Presence`
-- `PresenceLifecycle`
-- `ProductBoundary`
-- `Recognition`
-- `RecognitionMath`
-- `Release`
-- `SettingsInteraction`
-- `SettingsLaunch`
-- `SettingsSearch`
-- `SettingsUX`
-- `SetupBack`
-- `Toolbar`
-- `UnlockFlow`
-- `UpdateLifecycle`
+```sh
+Tests/run.sh                          # All local suites
+Tests/run.sh --list                   # Every available suite
+Tests/run.sh SettingsSearch UnlockFlow
+Tests/run.sh MultiFace                # Downloads two synthetic face images
+```
 
-`Support/` holds helpers shared by several suites.
+Run `bash Tests/<Name>/run.sh` directly to pass arguments accepted by an
+individual suite, such as a directory for rendered images. AppKit and visual
+fixtures need a logged-in desktop session. `Support/` contains shared test helpers.

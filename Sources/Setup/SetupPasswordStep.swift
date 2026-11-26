@@ -73,7 +73,7 @@ struct SetupPasswordStep: View {
 			finishButtonTitle: "\(buttonTitle)",
 			onFinish: submit,
 			onClose: onClose ?? onSkip,
-		pageMedia: { _ in AnyView(SetupShot(source: .image("setup-password"), aspectRatio: 953.0 / 189.0, cornerRadius: 12)) },
+		pageMedia: { _ in AnyView(SetupShot(name: "setup-password", aspectRatio: 953.0 / 189.0, cornerRadius: 12)) },
 		mediaHeight: 330,
 			pageAccessory: { _ in AnyView(fieldBlock) },
 			primaryEnabled: canSubmit,

@@ -12,7 +12,7 @@ LAUNCH_ARG=--settings
 
 usage() {
 	echo "Usage: $0 [--no-build] [--agent] [--render-diagnostics] [--dry-run]"
-	echo "Default: stop old Gaze, build current sources, launch Settings."
+	echo "Default: build current sources, restart this checkout’s Gaze, open Settings."
 	echo "  --no-build  Restart the latest successful build without recompiling."
 	echo "  --agent     Launch in the menu bar without opening Settings."
 	echo "  --dry-run   Print the plan without building, stopping, or launching."
@@ -30,13 +30,13 @@ for arg in "$@"; do
 	esac
 done
 
-# Restrict to this user's app processes; never touch PAM/XPC or other helpers.
+# Restart only the executable built in this checkout.
 gaze_pids() {
 	local pid command
 	for pid in $(/usr/bin/pgrep -u "$(/usr/bin/id -u)" -x Gaze || true); do
 		command="$(/bin/ps -p "$pid" -o comm= 2>/dev/null || true)"
 		case "$command" in
-			*/Gaze.app/Contents/MacOS/Gaze) echo "$pid" ;;
+			"$BINARY") echo "$pid" ;;
 		esac
 	done
 }
@@ -44,16 +44,31 @@ gaze_pids() {
 echo "Target: $APP"
 echo "Existing Gaze app PIDs: $(gaze_pids | tr '\n' ' ')"
 if [ "$DRY_RUN" = 1 ]; then
-	echo "Would stop these app processes; build=$BUILD; launch $LAUNCH_ARG; render diagnostics=$RENDER_DIAGNOSTICS."
+	echo "Would build=$BUILD, stop these app processes, and launch $LAUNCH_ARG with render diagnostics=$RENDER_DIAGNOSTICS."
 	exit 0
 fi
 
 if [ "$BUILD" = 0 ]; then
 	[ -x "$BINARY" ] || { echo "No built app. Run without --no-build first." >&2; exit 1; }
 	/usr/bin/codesign --verify --deep --strict "$APP"
-else
-	export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}"
-	[ -d "$DEVELOPER_DIR" ] || { echo "Missing toolchain: $DEVELOPER_DIR" >&2; exit 1; }
+fi
+
+if [ "$BUILD" = 1 ]; then
+	mkdir -p "$ROOT/build"
+	MARKER="$(mktemp "$ROOT/build/.gaze-run-start.XXXXXX")"
+	trap 'rm -f "$MARKER"' EXIT
+	echo "Building current sources (log: build/run-gaze-build.log)..."
+	# Force the local output even if this shell inherited release build options.
+	if ! DIST=0 GAZE_ARCHS="${GAZE_ARCHS:-$(uname -m)}" GAZE_BUILD_OUTPUT="$APP" \
+		"$ROOT/build.sh" >"$ROOT/build/run-gaze-build.log" 2>&1; then
+		tail -n 50 "$ROOT/build/run-gaze-build.log" >&2
+		echo "Build failed. Not launching the previous binary." >&2
+		exit 1
+	fi
+	[ -x "$BINARY" ] && [ "$BINARY" -nt "$MARKER" ] || {
+		echo "Build did not produce a fresh executable. Not launching." >&2
+		exit 1
+	}
 fi
 
 PIDS="$(gaze_pids)"
@@ -73,23 +88,6 @@ if [ -n "$PIDS" ]; then
 		echo "Gaze is still running or was restarted by a service. Aborting; no forced kill." >&2
 		exit 1
 	fi
-fi
-
-if [ "$BUILD" = 1 ]; then
-	mkdir -p "$ROOT/build"
-	MARKER="$(mktemp "$ROOT/build/.gaze-run-start.XXXXXX")"
-	trap 'rm -f "$MARKER"' EXIT
-	echo "Building current sources (log: build/run-gaze-build.log)..."
-	# Force the local output even if this shell inherited release build options.
-	if ! DIST=0 GAZE_BUILD_OUTPUT="$APP" "$ROOT/build.sh" >"$ROOT/build/run-gaze-build.log" 2>&1; then
-		tail -n 50 "$ROOT/build/run-gaze-build.log" >&2
-		echo "Build failed. Not launching the previous binary." >&2
-		exit 1
-	fi
-	[ -x "$BINARY" ] && [ "$BINARY" -nt "$MARKER" ] || {
-		echo "Build did not produce a fresh executable. Not launching." >&2
-		exit 1
-	}
 fi
 
 /usr/bin/codesign --verify --deep --strict "$APP"

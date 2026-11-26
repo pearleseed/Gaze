@@ -17,29 +17,13 @@
     {
       "id": "face-embedding",
       "kind": "ml-model",
-      "description": "Recognition model inputs. build.sh prefers precompiled FaceEmbedding.mlmodelc when present; the relationship to the raw package is not established by these fingerprints.",
+      "description": "Precompiled FaceEmbedding model selected by the release build.",
       "repoPaths": [
-        "Resources/FaceEmbedding.mlpackage",
         "Resources/FaceEmbedding.mlmodelc"
       ],
       "bundledAs": "Contents/Resources/FaceEmbedding.mlmodelc",
       "byteIdentity": {
         "files": [
-          {
-            "path": "Resources/FaceEmbedding.mlpackage/Data/com.apple.CoreML/model.mlmodel",
-            "bytes": 184289,
-            "sha256": "b8992d7979904fb5d6b0cf9ec452f158d9257cd820730328de9242eb6652f494"
-          },
-          {
-            "path": "Resources/FaceEmbedding.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
-            "bytes": 7408704,
-            "sha256": "f9145f919e28153bee573651d9681d9917858be038998f59233bc7bd28c00da9"
-          },
-          {
-            "path": "Resources/FaceEmbedding.mlpackage/Manifest.json",
-            "bytes": 617,
-            "sha256": "24e955faff7aa1b24639ead833d2ce31aa0df9a79a7c84e21de5b5104498ab95"
-          },
           {
             "path": "Resources/FaceEmbedding.mlmodelc/analytics/coremldata.bin",
             "bytes": 243,
@@ -99,7 +83,7 @@
         }
       },
       "clearance": "cleared",
-      "notes": "Cleared on owner-stated Shariq permission recorded 2026-09-18 for the Sapphire-matching precompiled weights (c28620...1545), byte identity preserved. Entry still combines those covered weights with the different raw package, and does not establish upstream rights; those limits are recorded as a known accepted risk carried in the owner's name. See SHARIQ-PERMISSION-20260918.md."
+      "notes": "Cleared on owner-stated Shariq permission recorded 2026-09-18 for the Sapphire-matching precompiled weights (c28620...1545), byte identity preserved. The different legacy raw package is outside this inventory entry. The Shariq permission does not establish upstream rights. See docs/licensing/sapphire-permission.md and docs/licensing/insightface.md."
     },
     {
       "id": "spoof-detector",
@@ -160,18 +144,13 @@
     {
       "id": "setup-art",
       "kind": "image-set",
-      "description": "Setup artwork, screenshots, clips, rounded variants and generated companion illustrations copied from Resources/Art into the app bundle, together with the native unlock animation clips and their resting frames in both colours.",
+      "description": "Setup artwork, toolbar images, the lock-screen capture background and native unlock animations bundled from Resources/Art.",
       "repoPaths": [
         "Resources/Art"
       ],
       "bundledAs": "Contents/Resources/Art/",
       "byteIdentity": {
         "files": [
-          {
-            "path": "Resources/Art/backdrop.png",
-            "bytes": 1524542,
-            "sha256": "4d563818c5787cfe924ea58284ba7abfeec3c01a91ff82d319fb44c7f5b924b4"
-          },
           {
             "path": "Resources/Art/gaze-toolbar-black.png",
             "bytes": 6089,
@@ -183,99 +162,9 @@
             "sha256": "ef4d5539e5b73865990d6cb71ebb99c2f46553a0da8be0738532348b589238d2"
           },
           {
-            "path": "Resources/Art/gaze-toolbar.png",
-            "bytes": 3630,
-            "sha256": "f148082f8c35b17dba8ac8852dbd7001bead0d7b4ce4b216d395af557fab9d9b"
-          },
-          {
-            "path": "Resources/Art/how-keychain.mp4",
-            "bytes": 153844,
-            "sha256": "7bc08ef968f5b91179de0241240c5b8229d58787289eab62c5c70b423814a672"
-          },
-          {
-            "path": "Resources/Art/how-keychain.png",
-            "bytes": 199788,
-            "sha256": "cf6817fbc5eaa4943bb643562d32c9e6a433e6f1b87b235e0733bb04de88eefd"
-          },
-          {
-            "path": "Resources/Art/how-ondevice.mp4",
-            "bytes": 216618,
-            "sha256": "419e5421092f1adb7dae6495a15da04ede8d78f03fd9f22adc6cd3c371e8d641"
-          },
-          {
-            "path": "Resources/Art/how-ondevice.png",
-            "bytes": 160089,
-            "sha256": "80601ea3cfe2c0d9fb207b5fc6f2e8a2a4792201e068835f8ee7f211b5a74917"
-          },
-          {
-            "path": "Resources/Art/how-unlock.mp4",
-            "bytes": 38210,
-            "sha256": "e9a6e80c06e399a8353c274aa8ff16331db09afa26ea3bc6b63982ad7a4e21c3"
-          },
-          {
-            "path": "Resources/Art/how-unlock.png",
-            "bytes": 1185872,
-            "sha256": "21b0dd2bb8db54217a3f5df633b7dcd3818b218eadf1a90d76204ef24e42aa2d"
-          },
-          {
             "path": "Resources/Art/lockscreen-base.png",
             "bytes": 1649019,
             "sha256": "d0f6342ef500a18f26b6f3dea77add55853bd3ad86abfd5bc28e3e90c9daa612"
-          },
-          {
-            "path": "Resources/Art/movement-blink.png",
-            "bytes": 63162,
-            "sha256": "2c4e789c27f5739f5cc7b052f8b44f52c5c2ce67f8eaf9191c2f9e2117152912"
-          },
-          {
-            "path": "Resources/Art/movement-left.png",
-            "bytes": 77914,
-            "sha256": "f170b87651a70d030db39412105d53440d468f0a333d808c0c3ea7aef7a72678"
-          },
-          {
-            "path": "Resources/Art/movement-mouth.png",
-            "bytes": 62355,
-            "sha256": "e90069b1cab0f25fb129b294669d23de35842ec422770e5ba33b0d58c258761e"
-          },
-          {
-            "path": "Resources/Art/movement-nod.png",
-            "bytes": 78851,
-            "sha256": "0f28eca4d7c7284bb4acd498ecfd9586aaf8f75b106716f9bf9e9ffa7888eec1"
-          },
-          {
-            "path": "Resources/Art/movement-right.png",
-            "bytes": 79228,
-            "sha256": "26190743e7cfb5c5c2e66e011a3aa43175bb248ddc8b701ed30182c30a553235"
-          },
-          {
-            "path": "Resources/Art/onboarding-choice.png",
-            "bytes": 55244,
-            "sha256": "527294658034db5f3a2eacfa275944f778d153f469edaef9efb6ec2d53499f98"
-          },
-          {
-            "path": "Resources/Art/onboarding-failure.png",
-            "bytes": 58616,
-            "sha256": "79ca612d1a418e7d4f37f0010777fd9a5898a4e6158cd27f26d57ea82906361a"
-          },
-          {
-            "path": "Resources/Art/onboarding-local.png",
-            "bytes": 54422,
-            "sha256": "2a2a7b1b6a1d85f10c001318a173661469da2ad07ba070c9e86297bf6c64b4f3"
-          },
-          {
-            "path": "Resources/Art/onboarding-recognition.png",
-            "bytes": 56372,
-            "sha256": "fc17eaa2087e34f98109453dc516247482d3afb2db74c1f398a771cdf3493736"
-          },
-          {
-            "path": "Resources/Art/onboarding-success.png",
-            "bytes": 58169,
-            "sha256": "635d948e293e441a427b41a36d45f7755cf73a7b25441002b7ee969720427676"
-          },
-          {
-            "path": "Resources/Art/onboarding-unlock.png",
-            "bytes": 58508,
-            "sha256": "731e56683721068ab5bca6bc1e80a3bda7716303db287b5493974828b895190b"
           },
           {
             "path": "Resources/Art/setup-accessibility.png",
@@ -296,71 +185,6 @@
             "path": "Resources/Art/tour-backdrop.png",
             "bytes": 364274,
             "sha256": "28533475edd797ac805190f3158ab0bccc6bc6393bd9a830fce058b25cf01a15"
-          },
-          {
-            "path": "Resources/Art/tour-general.png",
-            "bytes": 339958,
-            "sha256": "9a46d17e3f26a5e63e5a2b9ac2c869b18c5980674b231f5d17eda07feb939f0b"
-          },
-          {
-            "path": "Resources/Art/tour-how-unlock.png",
-            "bytes": 278014,
-            "sha256": "f4b4f36faaefba3a6f4ccb5f1f19871842f774db0663ef625d904674fac21459"
-          },
-          {
-            "path": "Resources/Art/tour-notch.png",
-            "bytes": 362868,
-            "sha256": "da51ed460ec5124d8d4bc3593ae7c8af41b120b80a22d726e21cd8cafee50f4e"
-          },
-          {
-            "path": "Resources/Art/tour-practice.png",
-            "bytes": 194388,
-            "sha256": "0e839b2bb9e706f9371d1ebe892fb6ebf0c75e305566b98879d9e3ee0ddf2e71"
-          },
-          {
-            "path": "Resources/Art/tour-privacy.png",
-            "bytes": 238161,
-            "sha256": "353fb38b2f857b069b74837b956f3abb5c2ad259572e2b2dcd0f19681696a147"
-          },
-          {
-            "path": "Resources/Art/tour-recognition.png",
-            "bytes": 253643,
-            "sha256": "e5d1b710bf19cd5eb3240674baa2e71ab134bada37be47031c662c52f627697a"
-          },
-          {
-            "path": "Resources/Art/tour-rounded-keychain.png",
-            "bytes": 192021,
-            "sha256": "0e1500174a2fcc85298bf4c614b3618e3bf9d6166c9dc847ea82fad19295243e"
-          },
-          {
-            "path": "Resources/Art/tour-rounded-practice.png",
-            "bytes": 204262,
-            "sha256": "65507c28114e37b08af0701c91cf2d7593eb0a9f03c44c113a40413e4dd77258"
-          },
-          {
-            "path": "Resources/Art/tour-rounded-privacy.png",
-            "bytes": 246156,
-            "sha256": "968982ba8161167c15fe0f99ffbf30287794d680f6f22e4842d696b77ea77bec"
-          },
-          {
-            "path": "Resources/Art/tour-rounded-recognition.png",
-            "bytes": 266513,
-            "sha256": "ce37b870a111d86f2b662912958d37022271519b00d3ec114b9ed0de770f7168"
-          },
-          {
-            "path": "Resources/Art/tour-rounded-unlock.png",
-            "bytes": 1164054,
-            "sha256": "66ee5c9d4de1cacc611db3c24b11ea7c7ed0340bc83cd36a66a5ffad53a13ecf"
-          },
-          {
-            "path": "Resources/Art/tour-security.png",
-            "bytes": 381439,
-            "sha256": "71eaccf09bf9ea7746b2103fc48ac2952d771a96a4e3b39660d2608809cac065"
-          },
-          {
-            "path": "Resources/Art/tour-unlock.png",
-            "bytes": 332978,
-            "sha256": "9cb480e54280c3e04a977e4d1ba8451415498b4cc39bfdece454076d352ec461"
           },
           {
             "path": "Resources/Art/unlock-native-failure-blue.mp4",
@@ -592,9 +416,10 @@
     {
       "id": "iris-landmarks",
       "kind": "ml-model",
-      "description": "MediaPipe Iris landmark model. Finds the iris centre inside each eye for the Follow the light movement (Sources/Recognition/IrisLocator.swift). Compiled by build.sh into IrisLandmarks.mlmodelc. Optional: without it the pixel pupil search is used.",
+      "description": "Precompiled MediaPipe Iris model used for the Follow the light movement. The source checkout retains the original Core ML package manifest.",
       "repoPaths": [
-        "Resources/IrisLandmarks.mlpackage"
+        "Resources/IrisLandmarks.mlpackage",
+        "Resources/IrisLandmarks.mlmodelc"
       ],
       "bundledAs": "Contents/Resources/IrisLandmarks.mlmodelc",
       "byteIdentity": {
@@ -605,19 +430,34 @@
             "sha256": "6524ccef69b5dafff6282fc1dc8e78cb84f6574ba29b75b729cdd5d9bbb1eac3"
           },
           {
-            "path": "Resources/IrisLandmarks.mlpackage/Data/com.apple.CoreML/model.mlmodel",
-            "bytes": 141906,
-            "sha256": "0283c694dec635e23e2c17eff26d51b62be1bd5cf953ef6cbdf2c49168ca2596"
+            "path": "Resources/IrisLandmarks.mlmodelc/analytics/coremldata.bin",
+            "bytes": 243,
+            "sha256": "e63f60e46d1190263c993c9ff6c50ee2825e067bfe6cdb021cf38faa51bbb77e"
           },
           {
-            "path": "Resources/IrisLandmarks.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+            "path": "Resources/IrisLandmarks.mlmodelc/coremldata.bin",
+            "bytes": 490,
+            "sha256": "d29dfbb89fc496cebdfae47dd26ccb3dc85da533f3d5f7eafbacd64af9470ede"
+          },
+          {
+            "path": "Resources/IrisLandmarks.mlmodelc/metadata.json",
+            "bytes": 2229,
+            "sha256": "3e22d0dc6929edd1f60536303db27cac4fefc1f0b40a8703924714f8c97fe068"
+          },
+          {
+            "path": "Resources/IrisLandmarks.mlmodelc/model.mil",
+            "bytes": 171611,
+            "sha256": "8ca811e4a18e2173332203b94c7b32a75ae1f2e526bb0c61b104ff6643e69574"
+          },
+          {
+            "path": "Resources/IrisLandmarks.mlmodelc/weights/weight.bin",
             "bytes": 1325790,
             "sha256": "4bf30cd2b9560619c6f107445f54915edb873e138586ddbdfa753df8e378a383"
           }
         ]
       },
       "provenance": {
-        "summary": "Google MediaPipe Iris landmark model (google-ai-edge/mediapipe, mediapipe/modules/iris_landmark/iris_landmark.tflite), as ported to PyTorch weights irislandmarks.pth by cedriclmenard/irislandmarks.pytorch, converted to Core ML on 2026-09-29 with coremltools 9.0 / torch 2.14.0 (ImageType 64x64 RGB, scale 1/255). Parity with the PyTorch weights checked on the conversion input: max iris difference 0.05 px.",
+        "summary": "Google MediaPipe Iris landmark model (google-ai-edge/mediapipe, mediapipe/modules/iris_landmark/iris_landmark.tflite), as ported to PyTorch weights irislandmarks.pth by cedriclmenard/irislandmarks.pytorch, converted to Core ML on 2026-09-29 with coremltools 9.0 / torch 2.14.0 (ImageType 64x64 RGB, scale 1/255). Parity with the PyTorch weights checked on the conversion input: max iris difference 0.05 px. The precompiled files match the installed Gaze app byte-for-byte; the compiled weights match the SHA-256 recorded for the original package weights.",
         "evidenceRefs": [
           "ThirdParty/MediaPipeIris/SOURCE.md",
           "https://github.com/cedriclmenard/irislandmarks.pytorch",

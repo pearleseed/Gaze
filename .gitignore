@@ -8,6 +8,7 @@ exports/
 # Xcode noise
 xcuserdata/
 DerivedData/
+Xcode/Local.xcconfig
 
 # Compiled Core ML models — regenerated from the .mlpackage by build.sh
 *.mlmodelc/
@@ -75,3 +76,6 @@ Data/
 .work/
 Icon?
 Integrations/*/build/
+
+# Isolated worktrees
+.worktrees/

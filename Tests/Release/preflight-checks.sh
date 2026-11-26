@@ -7,7 +7,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gaze-release-preflight.XXXXXX")"
 trap 'rm -rf "$SCRATCH"' EXIT
 BIN="$SCRATCH/bin"
-mkdir -p "$BIN"
+RES="$SCRATCH/Resources"
+mkdir -p "$BIN" "$RES/FaceEmbedding.mlmodelc" "$RES/Spoof.mlmodelc"
+cp "$ROOT/Resources/Info.plist" "$ROOT/Resources/Gaze.entitlements" "$RES/"
+export GAZE_PREFLIGHT_RESOURCES="$RES"
 DID_IDENTITIES='  1) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Developer ID Application: Fixture (TEAMID1234)"
      1 valid identities found'
 DEV_IDENTITIES='  1) BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "Apple Development: Fixture (TEAMID1234)"
@@ -48,12 +51,9 @@ exec /usr/bin/xcrun "$@"
 MOCK
 chmod +x "$BIN/xcrun"
 PATH="$BIN:/usr/bin:/bin:/usr/sbin" check fail 'notarytool is not available'
+rm "$BIN/xcrun"
 
-RES="$SCRATCH/Resources"
-mkdir -p "$RES"
-cp "$ROOT/Resources/Info.plist" "$RES/Info.plist"
-cp "$ROOT/Resources/Gaze.entitlements" "$RES/Gaze.entitlements"
-export GAZE_PREFLIGHT_RESOURCES="$RES"
+rmdir "$RES/FaceEmbedding.mlmodelc" "$RES/Spoof.mlmodelc"
 PATH="/usr/bin:/bin:/usr/sbin" check fail 'no FaceEmbedding source'
 PATH="/usr/bin:/bin:/usr/sbin" check fail 'no Spoof source'
 mkdir -p "$RES/FaceEmbedding.mlmodelc" "$RES/Spoof.mlmodelc"
@@ -61,8 +61,20 @@ PATH="/usr/bin:/bin:/usr/sbin" check pass 'PREFLIGHT PASS'
 /usr/libexec/PlistBuddy -c 'Delete :NSCameraUsageDescription' "$RES/Info.plist"
 PATH="/usr/bin:/bin:/usr/sbin" check fail 'key NSCameraUsageDescription is absent'
 
+cp "$ROOT/Resources/Info.plist" "$RES/Info.plist"
+cat > "$BIN/python3" <<'MOCK'
+#!/bin/bash
+case "$1" in
+	*/ModelClearance/validate.py) ;;
+	*) exit 2 ;;
+esac
+echo 'Fixture clearance validator invoked'
+exit "${GAZE_FIXTURE_CLEARANCE_STATUS:-0}"
+MOCK
+chmod +x "$BIN/python3"
 MODE=''
-export GAZE_PREFLIGHT_RESOURCES="$ROOT/Resources"
-check pass 'PASS: model clearance'
+PATH="$BIN:/usr/bin:/bin:/usr/sbin" check pass 'Fixture clearance validator invoked'
+PATH="$BIN:/usr/bin:/bin:/usr/sbin" GAZE_FIXTURE_CLEARANCE_STATUS=1 check fail 'model/asset clearance evidence is incomplete'
+python3 "$ROOT/Tools/Release/ModelClearance/test_validate.py"
 
 echo "PASS: $COUNT preflight checks; synthetic identities and resources, mocked xcrun, no signing or network."

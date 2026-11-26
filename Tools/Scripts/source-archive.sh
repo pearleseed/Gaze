@@ -25,6 +25,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # it inside an archive that says MIT on the front would be claiming a grant
 # nobody gave.
 EXCLUDE=(
+	"Resources/FaceEmbedding.mlmodel"
 	"Resources/FaceEmbedding.mlpackage/"
 	"Resources/Liveness.mlmodelc/"
 	"Resources/Liveness.mlpackage/"
@@ -39,6 +40,8 @@ while IFS= read -r file; do
 		case "$file" in "$prefix"*) skip=1 ;; esac
 	done
 	[ -n "$skip" ] && continue
+	# The index can still list files removed from the working tree.
+	[ -e "$ROOT/$file" ] || [ -L "$ROOT/$file" ] || continue
 	mkdir -p "$STAGE/src/$(dirname "$file")"
 	cp "$ROOT/$file" "$STAGE/src/$file"
 	count=$((count + 1))
@@ -65,9 +68,8 @@ weaker: it can tell you from a stranger, and not much more.
 
 ## FaceIDKit
 
-The animations in setup are Aviorrok's, licensed to this app alone and
-explicitly not for redistribution. `SetupMark` substitutes system symbols when
-the framework is absent, so setup works and simply looks plainer.
+Earlier versions used Aviorrok's private FaceIDKit framework for setup animations.
+Current setup animations are rendered by the bundled Gaze companion code.
 
 ## Legacy texture model
 
@@ -90,14 +92,17 @@ rm -f "$OUT"
 # upstream would silently defeat it — so the finished archive is inspected for
 # the things that must not be in it rather than trusted to be right.
 echo "→ Checking"
-leaked=""
-for pattern in "FaceIDKit" "mlpackage" "Frameworks/" "Resources/Liveness.mlmodelc/"; do
-	if unzip -l "$OUT" | grep -qi "$pattern"; then
-		echo "  ✗ $pattern is in the archive" >&2
-		leaked=1
-	fi
-done
-[ -n "$leaked" ] && exit 1
+archive_paths="$(unzip -Z1 "$OUT")"
+# The public Iris package contains only its manifest. Any package payload
+# still fails the check below.
+archive_paths="$(grep -Fvx \
+	-e 'Resources/IrisLandmarks.mlpackage/' \
+	-e 'Resources/IrisLandmarks.mlpackage/Manifest.json' <<<"$archive_paths")"
+if leaked="$(grep -iE 'FaceIDKit|\.mlpackage(/|$)|(^|/)Frameworks/|Resources/(FaceEmbedding|Liveness)\.mlmodel' <<<"$archive_paths")"; then
+	echo "  ✗ Unexpected files in the source archive:" >&2
+	printf '%s\n' "$leaked" >&2
+	exit 1
+fi
 
 echo "  ✓ nothing that shouldn't be"
 echo "✓ $OUT ($(du -h "$OUT" | cut -f1))"

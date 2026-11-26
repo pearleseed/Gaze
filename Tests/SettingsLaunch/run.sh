@@ -51,12 +51,6 @@ fail() {
 	exit 1
 }
 
-# Xcode-beta toolchain per repo convention (AGENTS.md §2).
-if [ -z "${DEVELOPER_DIR:-}" ]; then
-	if [ -d /Applications/Xcode-beta.app/Contents/Developer ]; then
-		export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-	fi
-fi
 source "$ROOT/Tools/Scripts/toolchain.sh"
 require_toolchain
 SDK="$(oldest_usable_sdk | awk '{print $1}')"
@@ -68,13 +62,11 @@ if [ -n "${SDK:-}" ]; then
 else
 	SDKFLAG=()
 fi
-# The handoff only validates pane names, so the fixture gets the real case list alone.
-PANES="$SCRATCH/SettingsPane.swift"
-{ echo 'enum SettingsPane: String {'; sed -n '/^enum SettingsPane:/,/^}/p' "$ROOT/Sources/App/SettingsView.swift" | grep -m1 -E '^[[:space:]]+case '; echo '}'; } > "$PANES"
 xcrun swiftc -o "$EXE" \
 	"${SDKFLAG[@]+"${SDKFLAG[@]}"}" -target "$(host_target)" \
-	"$ROOT/Sources/App/SettingsLaunchHandoff.swift" \
-	"$ROOT/Tests/SettingsLaunch/Fixture.swift" "$PANES" >>"$LOG" 2>&1 \
+	"$ROOT/Sources/App/Settings/SettingsLaunchHandoff.swift" \
+	"$ROOT/Sources/App/Settings/SettingsPane.swift" \
+	"$ROOT/Tests/SettingsLaunch/Fixture.swift" >>"$LOG" 2>&1 \
 	|| fail "fixture did not compile"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string com.gazeunlock.Gaze.SettingsLaunchHandoffTest' "$APP/Contents/Info.plist" >>"$LOG" 2>&1
 /usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string GazeHandoffFixture' "$APP/Contents/Info.plist" >>"$LOG" 2>&1

@@ -306,11 +306,14 @@ final class SudoApproval {
 	static var isInstalled: Bool {
 		// Spacing-insensitive: an earlier Gaze wrote the same line with tab-like padding,
 		// and an exact match left the switch off while sudo was already routed to Gaze.
-		guard let text = try? String(contentsOfFile: SudoInstallScript.Paths().sudoLocalPath, encoding: .utf8),
-			SudoInstallScript.routesThroughGaze(text) else { return false }
-		// Without the requirement file the module trusts no listener, so a
-		// missing file means the setup is not complete.
-		return FileManager.default.fileExists(atPath: SudoInstallScript.Paths().requirementPath)
+		let paths = SudoInstallScript.Paths()
+		guard let text = try? String(contentsOfFile: paths.sudoLocalPath, encoding: .utf8) else { return false }
+		let fm = FileManager.default
+		return [(paths.modulePath, paths.requirementPath),
+			(SudoInstallScript.legacyModulePath, SudoInstallScript.legacyRequirementPath)].contains { module, requirement in
+			SudoInstallScript.routesThroughGaze(text, modulePath: module)
+				&& fm.fileExists(atPath: module) && fm.fileExists(atPath: requirement)
+		}
 	}
 
 	/// Reads this app's own designated requirement, which the installer writes
@@ -368,9 +371,13 @@ final class SudoApproval {
 			let script = NSAppleScript(source: scriptSource)
 			guard script?.executeAndReturnError(&failure) != nil, failure == nil else {
 				// -128 is the user cancelling the administrator prompt.
-				if failure?[NSAppleScript.errorNumber] as? Int == -128 { throw SudoApprovalError.cancelled }
+				let code = failure?[NSAppleScript.errorNumber] as? Int
+				if code == -128 { throw SudoApprovalError.cancelled }
 				let message = failure?[NSAppleScript.errorMessage] as? String ?? "the privileged script failed"
 				logger.error("The sudo setup script failed: \(message, privacy: .public)")
+				if code == SudoInstallScript.pamWriteDenied {
+					throw SudoApprovalError.pamWriteDenied(SudoInstallScript.terminalCommand(shellScript))
+				}
 				throw SudoApprovalError.scriptFailed(message)
 			}
 		}.value
@@ -383,6 +390,7 @@ enum SudoApprovalError: LocalizedError {
 	case socketPathTooLong
 	case cancelled
 	case notInstalledAfterScript
+	case pamWriteDenied(String)
 	case scriptFailed(String)
 
 	var errorDescription: String? {
@@ -397,6 +405,8 @@ enum SudoApprovalError: LocalizedError {
 			return "The administrator prompt was cancelled."
 		case .notInstalledAfterScript:
 			return "The setup ran, but sudo still isn't set up to use Gaze."
+		case .pamWriteDenied:
+			return "macOS blocked Gaze’s installer from updating /etc/pam.d/sudo_local. Copy the command, review it in Terminal, and run it with administrator approval. If Terminal is also denied, check its Full Disk Access in Privacy & Security."
 		case .scriptFailed(let message):
 			return "macOS reported: \(message)"
 		}

@@ -1,19 +1,20 @@
 #!/bin/bash
 # Stages a versioned Gaze DMG from an app bundle built by build.sh.
 #
-#   ./build.sh                              # or DIST=1 for release
-#   DIST=1 ./Tools/Release/BuildDMG.sh      # writes build/installers/Gaze-<version>-<build>.dmg
-#   ./Tools/Release/BuildDMG.sh --help      # usage, env overrides, then exit
+#   DIST=1 GAZE_ARCHS=arm64 ./build.sh
+#   DIST=1 GAZE_ARCHS=arm64 ./Tools/Release/BuildDMG.sh
+# Use GAZE_ARCHS=x86_64 for an Intel release. A release DMG is named
+# Gaze-<version>-<build>-<arch>.dmg.
 #
 # Env overrides:
 #   GAZE_DMG_APP         input app bundle (default build/Gaze.app,
-#                        or build/release/Gaze.app when DIST=1).
+#                        or build/release/<arch>/Gaze.app when DIST=1).
 #   GAZE_DMG_OUTPUT_DIR  output dir (default build/installers).
 #   GAZE_SIGNING_IDENTITY, GAZE_SIGNING_REFERENCE  see Signing.sh.
-# Refuses to overwrite an existing Gaze-<version>-<build>.dmg.
+# Refuses to overwrite an existing image.
 #
 # Never builds, signs the app, or changes an install. The app must already
-# exist at build/Gaze.app (local) or build/release/Gaze.app (DIST=1).
+# exist at build/Gaze.app (local) or build/release/<arch>/Gaze.app (DIST=1).
 # DMG staging is blocked when Tools/Release/ModelClearance/validate.py
 # refuses — in particular the bundled FaceEmbedding and Spoof models ship
 # only on a PASS. For DIST=1 the staged app must carry a Developer ID
@@ -28,26 +29,30 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=Signing.sh
 . "$ROOT/Tools/Release/Signing.sh"
+. "$ROOT/Tools/Release/Architecture.sh"
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
 	sed -n '2,/^set /p' "$0" | sed 's/^# \{0,1\}//'
 	echo "Version is read from the staged app's CFBundleShortVersionString."
-	echo "Existing Gaze-<version>-<build>.dmg is never overwritten."
 	exit 0
 fi
 [ $# -eq 0 ] || { echo "Usage: $(basename "$0") [-h|--help]" >&2; exit 1; }
 
 BUNDLE_ID=com.gazeunlock.Gaze
 OUT_DIR="${GAZE_DMG_OUTPUT_DIR:-$ROOT/build/installers}"
+ARCH_SUFFIX=""
 
 if [ "${DIST:-}" = "1" ]; then
-	APP="${GAZE_DMG_APP:-$ROOT/build/release/Gaze.app}"
+	gaze_require_release_arch "${GAZE_ARCHS:-}" || exit 2
+	APP="${GAZE_DMG_APP:-$ROOT/build/release/$GAZE_ARCHS/Gaze.app}"
+	ARCH_SUFFIX="-$GAZE_ARCHS"
 else
 	APP="${GAZE_DMG_APP:-$ROOT/build/Gaze.app}"
 fi
 
 [ -d "$APP" ] || { echo "Missing app bundle (run build.sh first): $APP" >&2; exit 1; }
 [ "$(basename "$APP")" = "Gaze.app" ] || { echo "The input app must be named Gaze.app: $APP" >&2; exit 1; }
+if [ "${DIST:-}" = "1" ]; then gaze_verify_bundle_arch "$APP" "$GAZE_ARCHS"; fi
 
 echo "→ Model clearance gate"
 python3 "$ROOT/Tools/Release/ModelClearance/validate.py" || {
@@ -114,7 +119,7 @@ case "$BUILD" in
 esac
 
 mkdir -p "$OUT_DIR"
-IMAGE="$OUT_DIR/Gaze-$VERSION-$BUILD.dmg"
+IMAGE="$OUT_DIR/Gaze-$VERSION-$BUILD$ARCH_SUFFIX.dmg"
 [ -e "$IMAGE" ] && { echo "Output already exists; remove it or set GAZE_DMG_OUTPUT_DIR: $IMAGE" >&2; exit 1; }
 
 STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gaze-dmg-stage.XXXXXX")"
@@ -254,7 +259,7 @@ NEED_KB=$((STAGE_KB * 2 + 102400))
 }
 
 echo "→ Creating $IMAGE"
-/usr/bin/hdiutil create -volname "Gaze $VERSION" -srcfolder "$STAGE" \
+/usr/bin/hdiutil create -volname "Gaze $VERSION${ARCH_SUFFIX:+ $GAZE_ARCHS}" -srcfolder "$STAGE" \
 	-format UDZO -imagekey zlib-level=9 -o "$STAGE_ROOT/Gaze-tmp.dmg" >/dev/null
 mv "$STAGE_ROOT/Gaze-tmp.dmg" "$IMAGE"
 

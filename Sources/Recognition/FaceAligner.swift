@@ -17,6 +17,8 @@ enum FaceAligner {
 	private static let referenceRightEye = CGPoint(x: 73.53, y: 112 - 51.69)
 
 	private static let context = CIContext(options: [.useSoftwareRenderer: false])
+	/// Face widths included in the crop used for spoof detection and dataset capture.
+	static let contextCropMargin: CGFloat = 2.7
 
 	/// A `side`×`side` BGRA buffer containing the aligned face, or nil if the pupils
 	/// weren't located.
@@ -101,7 +103,7 @@ enum FaceAligner {
 	///
 	/// No rotation either. A held phone is often slightly tilted, and that tilt is
 	/// evidence — straightening it throws the evidence away.
-	static func contextCrop(_ sample: FaceSample, side: Int, margin: CGFloat = 2.7) -> CVPixelBuffer? {
+	static func contextCrop(_ sample: FaceSample, side: Int, margin: CGFloat = contextCropMargin) -> CVPixelBuffer? {
 		guard (16...1024).contains(side), margin.isFinite, margin > 0 else { return nil }
 		let image = CIImage(cvPixelBuffer: sample.pixelBuffer)
 		guard let (crop, _) = contextWindow(sample, margin: margin) else { return nil }
@@ -171,7 +173,7 @@ enum FaceAligner {
 	/// Same geometry as `contextCrop(_:side:margin:)` by construction — both go
 	/// through `contextWindow` — so the rectangle the bezel cue overlaps against the
 	/// face is the face as the crop actually rendered it, including the edge slide.
-	static func contextFaceRect(_ sample: FaceSample, side: Int, margin: CGFloat = 2.7) -> CGRect? {
+	static func contextFaceRect(_ sample: FaceSample, side: Int, margin: CGFloat = contextCropMargin) -> CGRect? {
 		guard let (crop, face) = contextWindow(sample, margin: margin) else { return nil }
 		let scale = CGFloat(side) / crop.width
 		return CGRect(

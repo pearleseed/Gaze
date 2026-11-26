@@ -1,0 +1,548 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		219DAFD627CA9D2A6207405C /* ThirdParty/TourKit/TourKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B64623A4A738DABFA6CEAB /* ThirdParty/TourKit/TourKit.swift */; };
+		2EB52301344836E134C1A4A4 /* GazeFinder.appex in Embed Extensions */ = {isa = PBXBuildFile; fileRef = 65E8591BF693080F91DB0033 /* GazeFinder.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4808468069354B9E3F2750EC /* Credits in Resources */ = {isa = PBXBuildFile; fileRef = AA80409135E8752736AEE6B8 /* Credits */; };
+		52B523485FE654DF6BDD483E /* Art in Resources */ = {isa = PBXBuildFile; fileRef = 407B0498686AE665EDD7E938 /* Art */; };
+		AAB97901A4B3BFB1E69D9DB2 /* Sources/Security/AppLockStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41E0942E0F7740E67315D78E /* Sources/Security/AppLockStore.swift */; };
+		EDA2408632156DF22890466D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 70E0794F31F85796DF213205 /* AppIcon.icon */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C1E56D76D4C811C7C6308EA4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B74C2E413A5C9EBF6B4C1C09 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 39EBE09CFB67E788A7E6D1F5;
+			remoteInfo = GazeFinder;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DD3CD0F6A1D61FC7215294A9 /* Embed Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				2EB52301344836E134C1A4A4 /* GazeFinder.appex in Embed Extensions */,
+			);
+			name = "Embed Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		01553D59E444EB5CB4EFF544 /* Gaze.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Gaze.entitlements; sourceTree = "<group>"; };
+		407B0498686AE665EDD7E938 /* Art */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Art; sourceTree = "<group>"; };
+		41E0942E0F7740E67315D78E /* Sources/Security/AppLockStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Security/AppLockStore.swift; sourceTree = SOURCE_ROOT; };
+		65E8591BF693080F91DB0033 /* GazeFinder.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GazeFinder.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6BB2B1E1B8A267DCC74B636A /* PAM/pam_gaze.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PAM/pam_gaze.c; sourceTree = "<group>"; };
+		70A2E7DED1AE88121ACD1E8A /* Gaze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gaze.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		70E0794F31F85796DF213205 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		73B06A8CA68C735BA6AB423F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		89E6E3A3E130D5EBF828BFC6 /* GazeFinder.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = GazeFinder.xcconfig; sourceTree = "<group>"; };
+		97B64623A4A738DABFA6CEAB /* ThirdParty/TourKit/TourKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdParty/TourKit/TourKit.swift; sourceTree = SOURCE_ROOT; };
+		AA80409135E8752736AEE6B8 /* Credits */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Credits; sourceTree = "<group>"; };
+		CD1A7C18C3575A472737DFCC /* Gaze.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Gaze.xcconfig; sourceTree = "<group>"; };
+		E503802AD35FA7761EB311F5 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5CF8FE405B2203EB1F3CC4E5 /* Exceptions for "Security" folder in "Gaze" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				FaceCheck.swift,
+			);
+			target = 00D200CBF2884CACEA95D8E6 /* Gaze */;
+		};
+		8D7FA823A95C4A3E44753760 /* Exceptions for "App" folder in "Gaze" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AutofillSettings.swift,
+			);
+			target = 00D200CBF2884CACEA95D8E6 /* Gaze */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0942F723CEAF41EBE6D79A7D /* Setup */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Setup;
+			sourceTree = "<group>";
+		};
+		140EA0ED4D70D23D058617B8 /* Recognition */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Recognition;
+			sourceTree = "<group>";
+		};
+		1EEE7171818EE55D309DD721 /* Design */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Design;
+			sourceTree = "<group>";
+		};
+		41226E4EF5A027AF8D52253E /* Camera */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Camera;
+			sourceTree = "<group>";
+		};
+		601BBB53E2CFBCBE0FF037B6 /* Enrollment */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Enrollment;
+			sourceTree = "<group>";
+		};
+		7966C4B8410B91E660D7096E /* FinderExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FinderExtension;
+			sourceTree = "<group>";
+		};
+		891277D60B0CE3A53CE7E1BE /* Browser */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Browser;
+			sourceTree = "<group>";
+		};
+		A223BCD471A3E9DA3A29C882 /* Security */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5CF8FE405B2203EB1F3CC4E5 /* Exceptions for "Security" folder in "Gaze" target */,
+			);
+			path = Security;
+			sourceTree = "<group>";
+		};
+		D248DC7F2EC1BC75261335AC /* LockScreen */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LockScreen;
+			sourceTree = "<group>";
+		};
+		DB023B9F81C3BEDF0D7809B0 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8D7FA823A95C4A3E44753760 /* Exceptions for "App" folder in "Gaze" target */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		F4E8F1974B95A9CA1607D1DB /* Companion */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Companion;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXGroup section */
+		06BA644CD34E20BED591EC6E /* Project files */ = {
+			isa = PBXGroup;
+			children = (
+				1B856488CF7AD1F7AB2ECBB2 /* Sources */,
+				0D151B605CD00F136F193815 /* Resources */,
+				97B64623A4A738DABFA6CEAB /* ThirdParty/TourKit/TourKit.swift */,
+				79C457F4FFEDF05A3E64985C /* Xcode */,
+				97098F4236C95B249F5CA5F9 /* Products */,
+				F837943530B83B1B00B6D590 /* Recovered References */,
+			);
+			name = "Project files";
+			sourceTree = "<group>";
+		};
+		0D151B605CD00F136F193815 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				70E0794F31F85796DF213205 /* AppIcon.icon */,
+				407B0498686AE665EDD7E938 /* Art */,
+				AA80409135E8752736AEE6B8 /* Credits */,
+				73B06A8CA68C735BA6AB423F /* Info.plist */,
+				01553D59E444EB5CB4EFF544 /* Gaze.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		1B856488CF7AD1F7AB2ECBB2 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				DB023B9F81C3BEDF0D7809B0 /* App */,
+				891277D60B0CE3A53CE7E1BE /* Browser */,
+				41226E4EF5A027AF8D52253E /* Camera */,
+				F4E8F1974B95A9CA1607D1DB /* Companion */,
+				1EEE7171818EE55D309DD721 /* Design */,
+				601BBB53E2CFBCBE0FF037B6 /* Enrollment */,
+				D248DC7F2EC1BC75261335AC /* LockScreen */,
+				140EA0ED4D70D23D058617B8 /* Recognition */,
+				A223BCD471A3E9DA3A29C882 /* Security */,
+				0942F723CEAF41EBE6D79A7D /* Setup */,
+				7966C4B8410B91E660D7096E /* FinderExtension */,
+				6BB2B1E1B8A267DCC74B636A /* PAM/pam_gaze.c */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		79C457F4FFEDF05A3E64985C /* Xcode */ = {
+			isa = PBXGroup;
+			children = (
+				E503802AD35FA7761EB311F5 /* Shared.xcconfig */,
+				CD1A7C18C3575A472737DFCC /* Gaze.xcconfig */,
+				89E6E3A3E130D5EBF828BFC6 /* GazeFinder.xcconfig */,
+			);
+			path = Xcode;
+			sourceTree = "<group>";
+		};
+		97098F4236C95B249F5CA5F9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				70A2E7DED1AE88121ACD1E8A /* Gaze.app */,
+				65E8591BF693080F91DB0033 /* GazeFinder.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F837943530B83B1B00B6D590 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				41E0942E0F7740E67315D78E /* Sources/Security/AppLockStore.swift */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		00D200CBF2884CACEA95D8E6 /* Gaze */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 842099EC8C4BEEFA163C4289 /* Build configuration list for PBXNativeTarget "Gaze" */;
+			buildPhases = (
+				230AE8651AF9FE706876BA81 /* Sources */,
+				DD73BE236C8B87C4D4C7CAE5 /* Resources */,
+				6709D3E12886338F6F6C483C /* Stage Core ML Models */,
+				6482C250C393347EFC92B124 /* Build PAM Resource */,
+				DD3CD0F6A1D61FC7215294A9 /* Embed Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1269C44D2261C33913F9EB44 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0942F723CEAF41EBE6D79A7D /* Setup */,
+				140EA0ED4D70D23D058617B8 /* Recognition */,
+				1EEE7171818EE55D309DD721 /* Design */,
+				41226E4EF5A027AF8D52253E /* Camera */,
+				601BBB53E2CFBCBE0FF037B6 /* Enrollment */,
+				891277D60B0CE3A53CE7E1BE /* Browser */,
+				A223BCD471A3E9DA3A29C882 /* Security */,
+				D248DC7F2EC1BC75261335AC /* LockScreen */,
+				DB023B9F81C3BEDF0D7809B0 /* App */,
+				F4E8F1974B95A9CA1607D1DB /* Companion */,
+			);
+			name = Gaze;
+			productName = Gaze;
+			productReference = 70A2E7DED1AE88121ACD1E8A /* Gaze.app */;
+			productType = "com.apple.product-type.application";
+		};
+		39EBE09CFB67E788A7E6D1F5 /* GazeFinder */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77C5DBA602BFB76B7DD02F00 /* Build configuration list for PBXNativeTarget "GazeFinder" */;
+			buildPhases = (
+				299F6BAC8894FCF8E15F5437 /* Set Finder Extension Version */,
+				1BD0E72FCB948D4BD67C08BB /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7966C4B8410B91E660D7096E /* FinderExtension */,
+			);
+			name = GazeFinder;
+			productName = GazeFinder;
+			productReference = 65E8591BF693080F91DB0033 /* GazeFinder.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B74C2E413A5C9EBF6B4C1C09 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2720;
+			};
+			buildConfigurationList = 3C5E559A6EAA0E5B926AFFEA /* Build configuration list for PBXProject "Gaze" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 06BA644CD34E20BED591EC6E /* Project files */;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 97098F4236C95B249F5CA5F9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				00D200CBF2884CACEA95D8E6 /* Gaze */,
+				39EBE09CFB67E788A7E6D1F5 /* GazeFinder */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DD73BE236C8B87C4D4C7CAE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EDA2408632156DF22890466D /* AppIcon.icon in Resources */,
+				52B523485FE654DF6BDD483E /* Art in Resources */,
+				4808468069354B9E3F2750EC /* Credits in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		299F6BAC8894FCF8E15F5437 /* Set Finder Extension Version */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Sources/FinderExtension/Info.plist",
+				"$(SRCROOT)/Resources/Info.plist",
+				"$(SRCROOT)/Tools/Scripts/xcode-bundle-resources.sh",
+				"$(SRCROOT)/Tools/Scripts/BundleResources.sh",
+			);
+			name = "Set Finder Extension Version";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Finder-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"$SRCROOT/Tools/Scripts/xcode-bundle-resources.sh\" finder\n";
+		};
+		6482C250C393347EFC92B124 /* Build PAM Resource */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Sources/PAM/pam_gaze.c",
+				"$(SRCROOT)/Tools/Scripts/xcode-bundle-resources.sh",
+				"$(SRCROOT)/Tools/Scripts/BundleResources.sh",
+			);
+			name = "Build PAM Resource";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/pam_gaze.so",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"$SRCROOT/Tools/Scripts/xcode-bundle-resources.sh\" pam\n";
+		};
+		6709D3E12886338F6F6C483C /* Stage Core ML Models */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Tools/Scripts/xcode-bundle-resources.sh",
+				"$(SRCROOT)/Tools/Scripts/BundleResources.sh",
+			);
+			name = "Stage Core ML Models";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"$SRCROOT/Tools/Scripts/xcode-bundle-resources.sh\" models\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1BD0E72FCB948D4BD67C08BB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAB97901A4B3BFB1E69D9DB2 /* Sources/Security/AppLockStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		230AE8651AF9FE706876BA81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				219DAFD627CA9D2A6207405C /* ThirdParty/TourKit/TourKit.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1269C44D2261C33913F9EB44 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 39EBE09CFB67E788A7E6D1F5 /* GazeFinder */;
+			targetProxy = C1E56D76D4C811C7C6308EA4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		05901B094E57742E7A6195C0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E503802AD35FA7761EB311F5 /* Shared.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3MZSQLPMVV;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+			};
+			name = Debug;
+		};
+		7B50AC1131EF89AB0AFBA897 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 89E6E3A3E130D5EBF828BFC6 /* GazeFinder.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3MZSQLPMVV;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+			};
+			name = Debug;
+		};
+		8B75B560A33C95DB830ACC23 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = CD1A7C18C3575A472737DFCC /* Gaze.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3MZSQLPMVV;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+			};
+			name = Debug;
+		};
+		A53E9B619A2DB7D5E958EB30 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = CD1A7C18C3575A472737DFCC /* Gaze.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				DEAD_CODE_STRIPPING = YES;
+			};
+			name = Release;
+		};
+		A91EF1DBE281F10CDEBF983F /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E503802AD35FA7761EB311F5 /* Shared.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 3MZSQLPMVV;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		C3D10112F8F2A9AB7C9A2FAF /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 89E6E3A3E130D5EBF828BFC6 /* GazeFinder.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				DEAD_CODE_STRIPPING = YES;
+				REGISTER_APP_GROUPS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3C5E559A6EAA0E5B926AFFEA /* Build configuration list for PBXProject "Gaze" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				05901B094E57742E7A6195C0 /* Debug */,
+				A91EF1DBE281F10CDEBF983F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		77C5DBA602BFB76B7DD02F00 /* Build configuration list for PBXNativeTarget "GazeFinder" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7B50AC1131EF89AB0AFBA897 /* Debug */,
+				C3D10112F8F2A9AB7C9A2FAF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		842099EC8C4BEEFA163C4289 /* Build configuration list for PBXNativeTarget "Gaze" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B75B560A33C95DB830ACC23 /* Debug */,
+				A53E9B619A2DB7D5E958EB30 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B74C2E413A5C9EBF6B4C1C09 /* Project object */;
+}

@@ -17,18 +17,13 @@ from pathlib import Path
 import plistlib
 import subprocess
 import tempfile
-
-import dmgbuild
 import time
-from ds_store import DSStore
-
-from artwork import ICON_LOCATIONS, ICON_SIZE, WINDOW_SIZE, render
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def run(*command, capture=False):
-    result = subprocess.run(command, check=True, capture_output=capture)
+def run(*command, capture=False, env=None):
+    result = subprocess.run(command, check=True, capture_output=capture, env=env)
     return result.stdout if capture else None
 
 
@@ -41,6 +36,10 @@ def digest(path):
 
 
 def verify_image(image, executable_hash):
+    from ds_store import DSStore
+
+    from artwork import ICON_LOCATIONS, ICON_SIZE
+
     run("/usr/bin/hdiutil", "verify", str(image))
     with tempfile.TemporaryDirectory(prefix="gaze-dmg-mount-") as scratch:
         mount = Path(scratch) / "volume"
@@ -80,13 +79,19 @@ def verify_image(image, executable_hash):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--app", type=Path, default=ROOT / "build/release/Gaze.app")
+    parser.add_argument("--arch", choices=("arm64", "x86_64"), help="Required for release packaging")
+    parser.add_argument("--app", type=Path, help="Input app bundle. Defaults to the build for --arch")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "build/installers")
     parser.add_argument("--local-preview", action="store_true",
                         help="Create a local design candidate; not a cleared distribution build")
     parser.add_argument("--notary-profile", help="Keychain profile for Apple notarization; required for release")
     args = parser.parse_args()
-    app = args.app.resolve(strict=True)
+    if not args.local_preview and not args.arch:
+        parser.error("Select --arch arm64 (Apple Silicon) or --arch x86_64 (Intel)")
+    default_app = ROOT / "build/release" / args.arch / "Gaze.app" if args.arch else ROOT / "build/Gaze.app"
+    app = (args.app or default_app).resolve()
+    if not app.is_dir():
+        parser.error(f"Missing app bundle: {app}")
     if app.name != "Gaze.app":
         parser.error("The input app must be named Gaze.app")
     metadata = plistlib.loads((app / "Contents/Info.plist").read_bytes())
@@ -95,20 +100,18 @@ def main():
     binary = app / "Contents/MacOS/Gaze"
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(app))
     architecture = run("/usr/bin/lipo", "-archs", str(binary), capture=True).decode().strip()
-    # Distribution supports both Apple Silicon and Intel Macs.
-    if not args.local_preview:
-        if "arm64" not in architecture.split():
-            parser.error("Missing arm64 slice")
-        if "x86_64" not in architecture.split():
-            parser.error("Missing x86_64 slice")
+    if args.arch and architecture != args.arch:
+        parser.error(f"Expected only {args.arch}, found {architecture}")
     version = metadata["CFBundleShortVersionString"]
-    if any(c not in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-" for c in version):
-        parser.error("Version contains characters unsuitable for a filename")
+    build = metadata["CFBundleVersion"]
+    for value in (version, build):
+        if not value or any(c not in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-" for c in value):
+            parser.error("Version or build contains characters unsuitable for a filename")
 
     authority = None
     if not args.local_preview:
         run("python3", str(ROOT / "Tools/Release/ModelClearance/validate.py"))
-        run("bash", str(ROOT / "Tools/Release/verify.sh"), str(app))
+        run("bash", str(ROOT / "Tools/Release/verify.sh"), str(app), env={**os.environ, "GAZE_ARCHS": args.arch})
         if not args.notary_profile:
             parser.error("A --notary-profile is required to notarize the release DMG")
         signature = subprocess.run(["/usr/bin/codesign", "-dv", "--verbose=4", str(app)],
@@ -119,10 +122,15 @@ def main():
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     suffix = "-local-preview" if args.local_preview else ""
-    image = output_dir / f"Gaze-{version}-{architecture.replace(' ', '-')}{suffix}.dmg"
+    image = output_dir / f"Gaze-{version}-{build}-{architecture.replace(' ', '-')}{suffix}.dmg"
     if image.exists():
         parser.error(f"Output already exists; choose a fresh --output-dir: {image}")
-    artwork_dir = output_dir / "artwork"
+
+    import dmgbuild
+
+    from artwork import ICON_LOCATIONS, ICON_SIZE, WINDOW_SIZE, render
+
+    artwork_dir = output_dir / f"artwork-{architecture.replace(' ', '-')}"
     render(artwork_dir)
     # Retina source carries the Pro Black supreme art (motif + bold arrow +
     # white caption); fail rather than shipping a white/empty fallback.
@@ -167,7 +175,7 @@ def main():
         # that names the volume; if an older "Gaze" disk is still mounted, this one
         # mounts as "Gaze 1", the alias resolves to the old disk and the window opens
         # white. It also stops Finder reusing a cached window from a previous build.
-        volume = f"Gaze {version} ({time.strftime('%m%d-%H%M')})"
+        volume = f"Gaze {version} {architecture} ({time.strftime('%m%d-%H%M')})"
         dmgbuild.build_dmg(str(staged), volume, settings=settings)
         verify_image(staged, executable_hash)
         if authority:

@@ -26,7 +26,7 @@ import Foundation
 import ImageIO
 import Vision
 
-// Same as `Liveness.cropMargin` and the side `DatasetCapture` writes.
+// Match `FaceAligner.contextCropMargin` and the side `DatasetCapture` writes.
 let margin: CGFloat = 2.7
 let side = 256
 

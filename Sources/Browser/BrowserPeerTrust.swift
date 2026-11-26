@@ -50,15 +50,6 @@ enum BrowserPeerTrust {
 		guard getppid() == parent else { throw BrowserBridgeError.untrustedPeer }
 	}
 
-	static func verifyApplication(_ url: URL, identifier: String) throws {
-		var code: SecStaticCode?
-		var requirement: SecRequirement?
-		guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code,
-			SecRequirementCreateWithString(try samePublisher(identifier: identifier) as CFString, [], &requirement) == errSecSuccess,
-			SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), requirement) == errSecSuccess
-		else { throw BrowserBridgeError.untrustedPeer }
-	}
-
 	private static func verify(attributes: [String: Any], requirement text: String) throws {
 		var code: SecCode?
 		var requirement: SecRequirement?

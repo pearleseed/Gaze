@@ -56,6 +56,9 @@ A Mac with macOS 26 Tahoe or later, a built-in or connected camera, and your log
 
 Gaze is built in the open. You’ll need Xcode 26 to build it.
 
+Open `Gaze.xcodeproj` and choose the **Gaze** scheme to develop in Xcode. See
+[Tools](Tools/README.md) for local model setup, signing and per-architecture release builds.
+
 ```sh
 git clone https://github.com/OwenCope/Gaze.git
 cd Gaze

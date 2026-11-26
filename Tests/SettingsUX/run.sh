@@ -3,17 +3,19 @@
 #
 # The Settings window is never launched here and nothing touches the Keychain,
 # preferences, camera or enrolment. This script (1) parse-checks the real
-# Sources/App/SettingsView.swift with the project toolchain, then (2) asserts
+# Settings sources with the project toolchain, then (2) asserts
 # the structural invariants the fixes depend on: a visible retained-password
 # note in recognition-only mode, keyboard/VoiceOver-reachable face actions,
 # and Touch ID copy that names only what its switch gates.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VIEW="$ROOT/Sources/App/SettingsView.swift"
+. "$ROOT/Tools/Scripts/toolchain.sh"
+require_toolchain
+SETTINGS=("$ROOT/Sources/App/Settings/"*.swift)
 
 fail=0
 need() { # need <fixed-string> <why>
-	if grep -F -q "$1" "$VIEW"; then
+	if grep -F -q "$1" "${SETTINGS[@]}"; then
 		echo "ok   - $2"
 	else
 		echo "FAIL - $2 (missing: $1)"
@@ -21,7 +23,7 @@ need() { # need <fixed-string> <why>
 	fi
 }
 forbid() { # forbid <fixed-string> <why>
-	if grep -F -q "$1" "$VIEW"; then
+	if grep -F -q "$1" "${SETTINGS[@]}"; then
 		echo "FAIL - $2 (still present: $1)"
 		fail=1
 	else
@@ -30,9 +32,8 @@ forbid() { # forbid <fixed-string> <why>
 }
 
 echo "-- parse --"
-DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcrun swiftc \
-	-parse "$VIEW" -o /dev/null
-echo "ok   - SettingsView.swift parses"
+xcrun swiftc -frontend -parse "${SETTINGS[@]}"
+echo "ok   - Settings sources parse"
 
 echo "-- recognition-only mode --"
 need 'Try Test Recognition below. Nothing runs on the lock screen in this mode.' \
@@ -69,7 +70,7 @@ forbid 'Require Touch ID for changes here' \
 	"overbroad title is gone"
 need 'isEnabled: BiometricGate.isAvailable,' \
 	"no-sensor gating unchanged (policy untouched)"
-need 'isOn: bind(\.touchIDFallback))' \
+need 'isOn: $settings.touchIDFallback)' \
 	"same preference binding (policy untouched)"
 
 echo "-- deliberately unchanged --"

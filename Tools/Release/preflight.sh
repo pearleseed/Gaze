@@ -77,7 +77,7 @@ else
 	missing "no valid signing identity at all (provision an Apple Development identity for local builds, Developer ID Application for release)"
 fi
 
-for candidate in "$ROOT/build/release/Gaze.app" "$ROOT/build/Gaze.app"; do
+for candidate in "$ROOT/build/release/arm64/Gaze.app" "$ROOT/build/release/x86_64/Gaze.app" "$ROOT/build/Gaze.app"; do
 	if [ -d "$candidate" ]; then
 		AUTHORITY="$(codesign -dv --verbose=4 "$candidate" 2>&1 | sed -n 's/^Authority=\([^:]*\): .*/\1/p' | head -1)"
 		note "local build present at ${candidate#$ROOT/} (signed: ${AUTHORITY:-ad-hoc/none}; local signing state is informational, not a release verdict)"
@@ -93,6 +93,6 @@ if [ "$MISSING" = 0 ]; then
 	echo "PREFLIGHT PASS: checked prerequisites present (build-tools-only=$TOOLS_ONLY); a signed/notarized artifact and live acceptance are still required."
 else
 	echo "PREFLIGHT FAIL: $MISSING missing distribution prerequisite(s); local Apple Development builds are unaffected" >&2
-	echo "Next steps for the owner: provision a Developer ID Application certificate, run DIST=1 GAZE_SIGNING_IDENTITY=\"Developer ID Application: ...\" bash build.sh, notarize and staple the release bundle, then validate it with bash Tools/Release/verify.sh build/release/Gaze.app. Do not upload until model redistribution rights are recorded." >&2
+	echo 'See Tools/README.md for build, notarization and verification commands for arm64 and x86_64.' >&2
 	exit 1
 fi
