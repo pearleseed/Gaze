@@ -4,7 +4,7 @@
 Staged root shows exactly two icons -- Gaze.app left, Applications symlink
 right -- over the Pro Black supreme drag background (top dotted-pill motif
 with blue glow, bold double-chevron arrow + white "Drag Gaze to
-Applications" caption, graphite label lifts, cf. Glance/Aside/Atoll). LICENSE/README never ship
+Applications" caption, graphite label lifts). LICENSE/README never ship
 at the root; if ever added they belong in a docs subfolder so the root
 still shows two icons."""
 
@@ -20,6 +20,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[3]
+EXPECTED_BUNDLE_IDENTIFIER = "com.pearleseed.Gaze"
 
 
 def run(*command, capture=False, env=None):
@@ -77,6 +78,28 @@ def verify_image(image, executable_hash):
                 run("/usr/bin/hdiutil", "detach", str(mount))
 
 
+def detect_signing_authority(app, require_developer_id):
+    signature = subprocess.run(
+        ["/usr/bin/codesign", "-dv", "--verbose=4", str(app)],
+        capture_output=True, text=True, check=True,
+    ).stderr
+    dev_id = next(
+        (line.removeprefix("Authority=") for line in signature.splitlines()
+         if line.startswith("Authority=Developer ID Application: ")),
+        None,
+    )
+    if require_developer_id:
+        if not dev_id:
+            raise RuntimeError("Notarized release requires a Developer ID Application-signed app")
+        return dev_id
+    apple_dev = next(
+        (line.removeprefix("Authority=") for line in signature.splitlines()
+         if line.startswith("Authority=Apple Development: ")),
+        None,
+    )
+    return dev_id or apple_dev or "-"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arch", choices=("arm64", "x86_64"), help="Required for release packaging")
@@ -84,10 +107,13 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=ROOT / "build/installers")
     parser.add_argument("--local-preview", action="store_true",
                         help="Create a local design candidate; not a cleared distribution build")
-    parser.add_argument("--notary-profile", help="Keychain profile for Apple notarization; required for release")
+    parser.add_argument("--notary-profile",
+                        help="Optional keychain profile for Apple notarization; omit for un-notarized release DMG")
     args = parser.parse_args()
     if not args.local_preview and not args.arch:
         parser.error("Select --arch arm64 (Apple Silicon) or --arch x86_64 (Intel)")
+    if args.local_preview and args.notary_profile:
+        parser.error("--notary-profile cannot be combined with --local-preview")
     default_app = ROOT / "build/release" / args.arch / "Gaze.app" if args.arch else ROOT / "build/Gaze.app"
     app = (args.app or default_app).resolve()
     if not app.is_dir():
@@ -95,8 +121,8 @@ def main():
     if app.name != "Gaze.app":
         parser.error("The input app must be named Gaze.app")
     metadata = plistlib.loads((app / "Contents/Info.plist").read_bytes())
-    if metadata.get("CFBundleIdentifier") != "com.pearleseed.Gaze":
-        parser.error("Unexpected app bundle identifier")
+    if metadata.get("CFBundleIdentifier") != EXPECTED_BUNDLE_IDENTIFIER:
+        parser.error(f"Unexpected app bundle identifier; expected {EXPECTED_BUNDLE_IDENTIFIER}")
     binary = app / "Contents/MacOS/Gaze"
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", str(app))
     architecture = run("/usr/bin/lipo", "-archs", str(binary), capture=True).decode().strip()
@@ -109,15 +135,16 @@ def main():
             parser.error("Version or build contains characters unsuitable for a filename")
 
     authority = None
+    notarize = bool(args.notary_profile)
     if not args.local_preview:
         run("python3", str(ROOT / "Tools/Release/ModelClearance/validate.py"))
-        run("bash", str(ROOT / "Tools/Release/verify.sh"), str(app), env={**os.environ, "GAZE_ARCHS": args.arch})
-        if not args.notary_profile:
-            parser.error("A --notary-profile is required to notarize the release DMG")
-        signature = subprocess.run(["/usr/bin/codesign", "-dv", "--verbose=4", str(app)],
-                                   capture_output=True, text=True, check=True).stderr
-        authority = next(line.removeprefix("Authority=") for line in signature.splitlines()
-                         if line.startswith("Authority=Developer ID Application: "))
+        verify_env = {
+            **os.environ,
+            "GAZE_ARCHS": args.arch,
+            "GAZE_REQUIRE_DEVELOPER_ID": "1" if notarize else "0",
+        }
+        run("bash", str(ROOT / "Tools/Release/verify.sh"), str(app), env=verify_env)
+        authority = detect_signing_authority(app, require_developer_id=notarize)
 
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +162,7 @@ def main():
     # Retina source carries the Pro Black supreme art (motif + bold arrow +
     # white caption); fail rather than shipping a white/empty fallback.
     background = artwork_dir / "background.png"
-    for candidate in (background, artwork_dir / "background.png"):
+    for candidate in (background, artwork_dir / "background@2x.png"):
         if not candidate.is_file() or candidate.stat().st_size == 0:
             raise RuntimeError(f"Pro Black background missing: {candidate}; refusing fallback")
     executable_hash = digest(binary)
@@ -178,34 +205,53 @@ def main():
         volume = f"Gaze {version} {architecture} ({time.strftime('%m%d-%H%M')})"
         dmgbuild.build_dmg(str(staged), volume, settings=settings)
         verify_image(staged, executable_hash)
-        if authority:
+        if not args.local_preview and authority:
+            sign_cmd = ["/usr/bin/codesign", "--sign", authority]
+            if authority.startswith("Developer ID Application: "):
+                sign_cmd.append("--timestamp")
+            sign_cmd.append(str(staged))
             try:
-                run("/usr/bin/codesign", "--sign", authority, "--timestamp", str(staged))
+                run(*sign_cmd)
             except subprocess.CalledProcessError as exc:
-                raise RuntimeError(f"DMG Developer ID signing failed: {exc}") from exc
-            signature = subprocess.run(["/usr/bin/codesign", "-dv", "--verbose=4", str(staged)],
-                                       capture_output=True, text=True, check=True).stderr
-            if "Authority=Developer ID Application: " not in signature:
-                raise RuntimeError("DMG signature is not Developer ID Application; no image written")
-            if "Timestamp=" not in signature:
-                raise RuntimeError("DMG signature has no secure timestamp; no image written")
-            try:
-                result = json.loads(run("xcrun", "notarytool", "submit", str(staged),
-                                        "--keychain-profile", args.notary_profile,
-                                        "--wait", "--output-format", "json", capture=True))
-            except subprocess.CalledProcessError as exc:
-                raise RuntimeError(f"Notarization submit failed; check --notary-profile: {exc}") from exc
-            if result.get("status") != "Accepted":
-                raise RuntimeError(f"Notarization was not accepted: {result.get('id')}")
-            try:
-                run("xcrun", "stapler", "staple", str(staged))
-                run("xcrun", "stapler", "validate", str(staged))
-            except subprocess.CalledProcessError as exc:
-                raise RuntimeError(f"Notarization staple failed; no image written: {exc}") from exc
+                raise RuntimeError(f"DMG signing failed: {exc}") from exc
             run("/usr/bin/codesign", "--verify", "--strict", str(staged))
-            run("/usr/sbin/spctl", "--assess", "--type", "open", "--context",
-                "context:primary-signature", "--verbose=2", str(staged))
+            if notarize:
+                signature = subprocess.run(
+                    ["/usr/bin/codesign", "-dv", "--verbose=4", str(staged)],
+                    capture_output=True, text=True, check=True,
+                ).stderr
+                if "Authority=Developer ID Application: " not in signature:
+                    raise RuntimeError("DMG signature is not Developer ID Application; no image written")
+                if "Timestamp=" not in signature:
+                    raise RuntimeError("DMG signature has no secure timestamp; no image written")
+                try:
+                    result = json.loads(run(
+                        "xcrun", "notarytool", "submit", str(staged),
+                        "--keychain-profile", args.notary_profile,
+                        "--wait", "--output-format", "json", capture=True,
+                    ))
+                except subprocess.CalledProcessError as exc:
+                    raise RuntimeError(f"Notarization submit failed; check --notary-profile: {exc}") from exc
+                if result.get("status") != "Accepted":
+                    raise RuntimeError(f"Notarization was not accepted: {result.get('id')}")
+                try:
+                    run("xcrun", "stapler", "staple", str(staged))
+                    run("xcrun", "stapler", "validate", str(staged))
+                except subprocess.CalledProcessError as exc:
+                    raise RuntimeError(f"Notarization staple failed; no image written: {exc}") from exc
+                run("/usr/sbin/spctl", "--assess", "--type", "open", "--context",
+                    "context:primary-signature", "--verbose=2", str(staged))
         staged.rename(image)
+
+    if args.local_preview:
+        label = "LOCAL PREVIEW — not cleared for sharing"
+        verification = "Image checksum, mounted app signature and executable hash, Applications link, Finder layout and Retina background passed (local preview)"
+    elif notarize:
+        label = "NOTARIZED DMG"
+        verification = "Image checksum, mounted app signature and executable hash, Applications link, Finder layout, Retina background, DMG signature and notarization passed"
+    else:
+        label = "UN-NOTARIZED RELEASE DMG"
+        verification = "Image checksum, mounted app signature and executable hash, Applications link, Finder layout, Retina background and DMG signature passed (un-notarized)"
 
     checksum = digest(image)
     (output_dir / (image.name + ".sha256")).write_text(f"{checksum}  {image.name}\n")
@@ -213,14 +259,17 @@ def main():
         "createdUTC": datetime.now(timezone.utc).isoformat(), "dmg": str(image),
         "sha256": checksum, "bytes": image.stat().st_size,
         "app": str(app), "executableSHA256": executable_hash,
-        "version": version, "architecture": architecture,
+        "bundleIdentifier": metadata["CFBundleIdentifier"],
+        "version": version, "build": build, "architecture": architecture,
         "minimumMacOS": metadata["LSMinimumSystemVersion"],
+        "notarized": notarize,
+        "signingAuthority": "unsigned" if args.local_preview else ("ad-hoc" if authority == "-" else authority),
         "distributionReady": not args.local_preview,
-        "verification": "Image checksum, mounted app signature and executable hash, Applications link, Finder layout and Retina background passed",
+        "verification": verification,
         "visualInspection": "Background artwork only; live Finder appearance not checked by this script",
     }
     (output_dir / (image.name + ".json")).write_text(json.dumps(receipt, indent=2) + "\n")
-    print(f"{'LOCAL PREVIEW — not cleared for sharing' if args.local_preview else 'NOTARIZED DMG'}: {image}")
+    print(f"{label}: {image}")
 
 
 if __name__ == "__main__":

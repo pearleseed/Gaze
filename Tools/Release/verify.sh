@@ -2,9 +2,13 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/Tools/Release/Architecture.sh"
+if [ -z "${GAZE_ARCHS:-}" ] && [ -n "${1:-}" ] && [ "${DIST:-0}" != "1" ]; then
+	GAZE_ARCHS="$(uname -m)"
+fi
 gaze_require_release_arch "${GAZE_ARCHS:-}" || exit 2
 APP="${1:-$ROOT/build/release/$GAZE_ARCHS/Gaze.app}"
 BUNDLE_ID=com.pearleseed.Gaze
+REQUIRE_DEVELOPER_ID="${GAZE_REQUIRE_DEVELOPER_ID:-0}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 test -d "$APP" || fail "Release bundle missing: $APP"
 PLIST="$APP/Contents/Info.plist"
@@ -21,14 +25,20 @@ done
 for model in FaceEmbedding Spoof; do
 	test -d "$APP/Contents/Resources/$model.mlmodelc" || fail "Required $model model missing"
 done
-codesign --verify --deep --strict -R="anchor apple generic and identifier \"$BUNDLE_ID\"" "$APP" || fail "Code signature verification failed"
+if [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
+	codesign --verify --deep --strict -R="anchor apple generic and identifier \"$BUNDLE_ID\"" "$APP" || fail "Code signature verification failed"
+else
+	codesign --verify --deep --strict "$APP" || fail "Code signature verification failed"
+fi
 SIGNATURE="$(codesign -dv --verbose=4 "$APP" 2>&1)" || fail "Signature metadata unavailable"
-printf '%s\n' "$SIGNATURE" | grep -q '^Authority=' || fail "No signing authority (ad-hoc signatures are not supported)"
-printf '%s\n' "$SIGNATURE" | grep -q '^Authority=Developer ID Application: ' || fail "Developer ID Application signature required"
 test "$(printf '%s\n' "$SIGNATURE" | sed -n 's/^Identifier=//p')" = "$BUNDLE_ID" || fail "Signed app identifier mismatch"
 TEAM="$(printf '%s\n' "$SIGNATURE" | sed -n 's/^TeamIdentifier=//p')"
-[[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || fail "No valid signing team"
-printf '%s\n' "$SIGNATURE" | grep -q '^Timestamp=' || fail "Secure timestamp missing"
+if [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
+	printf '%s\n' "$SIGNATURE" | grep -q '^Authority=' || fail "No signing authority (ad-hoc signatures are not supported)"
+	printf '%s\n' "$SIGNATURE" | grep -q '^Authority=Developer ID Application: ' || fail "Developer ID Application signature required"
+	[[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || fail "No valid signing team"
+	printf '%s\n' "$SIGNATURE" | grep -q '^Timestamp=' || fail "Secure timestamp missing"
+fi
 printf '%s\n' "$SIGNATURE" | grep -q 'flags=.*runtime' || fail "Hardened Runtime missing"
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gaze-release-verify.XXXXXX")"
 trap 'rm -rf "$SCRATCH"' EXIT
@@ -38,10 +48,14 @@ for entitlement in get-task-allow cs.allow-jit cs.disable-library-validation cs.
 	value="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.$entitlement" "$SCRATCH/entitlements.plist" 2>/dev/null || true)"
 	test "$value" != true || fail "Unsafe release entitlement: $entitlement"
 done
-xcrun stapler validate "$APP" || fail "Stapled notarization ticket not validated"
-spctl --assess --type execute --verbose=2 "$APP" || fail "Gatekeeper did not accept the release bundle"
-echo "PASS: bundle, architecture, signed identifier, models, signature, timestamp, entitlements, notarization ticket and Gatekeeper checks"
-echo "Team: $TEAM"
+if [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
+	xcrun stapler validate "$APP" || fail "Stapled notarization ticket not validated"
+	spctl --assess --type execute --verbose=2 "$APP" || fail "Gatekeeper did not accept the release bundle"
+	echo "PASS: bundle, architecture, signed identifier, models, signature, timestamp, entitlements, notarization ticket and Gatekeeper checks"
+else
+	echo "PASS: un-notarized bundle, architecture, signed identifier, models, signature, runtime and entitlements checks"
+fi
+echo "Team: ${TEAM:-not set}"
 echo "Architecture: $GAZE_ARCHS"
 echo "Executable SHA-256: $(shasum -a 256 "$APP/Contents/MacOS/$EXECUTABLE" | awk '{print $1}')"
 echo "This is artifact validation, NOT proof of safe recognition, working lock-screen unlock, redistribution rights or clean-install compatibility."

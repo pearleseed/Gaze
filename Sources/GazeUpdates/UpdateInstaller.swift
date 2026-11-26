@@ -9,7 +9,7 @@ import os
 
 /// Downloads a release DMG, verifies it and swaps it in over the running app.
 ///
-/// Same bundle id and signing identity, so UserDefaults, keychain and TCC carry
+/// Same bundle id and signing policy, so UserDefaults, keychain and TCC carry
 /// over with no migration. The swap and relaunch run in a detached helper after
 /// this process exits, so a half-written bundle can never be launched.
 @Observable
@@ -31,6 +31,28 @@ package final class UpdateInstaller {
 		}
 	}
 
+	package enum CodeSigningMode: Equatable, Sendable {
+		case teamSigned
+		case adHoc
+
+		package nonisolated static func resolve(teamIdentifier: String?, flags: UInt32) -> Self? {
+			if let teamIdentifier, !teamIdentifier.isEmpty {
+				return .teamSigned
+			}
+			if (flags & SecCodeSignatureFlags.adhoc.rawValue) != 0 {
+				return .adHoc
+			}
+			return nil
+		}
+	}
+
+	package enum CodeRequirementPolicy {
+		case runningProcess
+		case designatedRequirement(SecRequirement)
+		case adHoc
+		case staticCode(SecStaticCode)
+	}
+
 	nonisolated private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "UpdateInstall")
 
 	package private(set) var state: State = .idle
@@ -42,7 +64,7 @@ package final class UpdateInstaller {
 		case .downloading, .installing: return
 		case .idle, .failed: break
 		}
-		guard let sha256, Self.isSHA256(sha256), ReleaseURLPolicy.isTrusted(url) else {
+		guard let sha256, Self.isSHA256(sha256), ReleaseURLPolicy.isTrustedDownload(url) else {
 			fail("The download didn't match. Try again.")
 			return
 		}
@@ -86,7 +108,7 @@ package final class UpdateInstaller {
 		state = .failed(message)
 	}
 
-	private static func isSHA256(_ value: String) -> Bool {
+	private nonisolated static func isSHA256(_ value: String) -> Bool {
 		value.count == 64
 			&& value.utf8.allSatisfy {
 				(48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
@@ -120,6 +142,9 @@ package final class UpdateInstaller {
 			path: "GazeUpdate-\(UUID().uuidString)", directoryHint: .isDirectory)
 		var staged: URL?
 		do {
+			guard isSHA256(sha256), ReleaseURLPolicy.isTrustedDownload(url) else {
+				throw InstallFailure(message: "This update couldn't be verified.")
+			}
 			try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
 			let dmg = tmp.appending(path: "Gaze.dmg", directoryHint: .notDirectory)
 			try await download(url: url, to: dmg, progress: progress)
@@ -237,7 +262,11 @@ package final class UpdateInstaller {
 		_ = try? runProcess("/usr/bin/hdiutil", ["detach", "-force", mount], message: "")
 	}
 
-	package nonisolated static func verify(app: URL, expectedVersion: String) throws {
+	package nonisolated static func verify(
+		app: URL,
+		expectedVersion: String,
+		runningCodeRequirementPolicy: CodeRequirementPolicy = .runningProcess
+	) throws {
 		var expected = expectedVersion.trimmingCharacters(in: .whitespacesAndNewlines)
 		if expected.first == "v" || expected.first == "V" { expected.removeFirst() }
 		let parts = expected.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)
@@ -246,29 +275,85 @@ package final class UpdateInstaller {
 				contentsOf: app.appending(path: "Contents/Info.plist", directoryHint: .notDirectory)),
 			let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
 			let identifier = info["CFBundleIdentifier"] as? String,
-			identifier == Bundle.main.bundleIdentifier,
+			identifier == AppIdentity.bundleIdentifier,
 			let version = info["CFBundleShortVersionString"] as? String,
 			version == String(parts[0]),
 			let build = info["CFBundleVersion"] as? String,
 			!build.isEmpty,
 			parts.count == 1 || build == String(parts[1])
 		else { throw InstallFailure(message: "This update couldn't be verified.") }
-		// The mounted app must satisfy this app's own designated requirement:
-		// same team and identifier, not just any signed bundle named Gaze.
-		var ownCode: SecCode?
-		var staticOwnCode: SecStaticCode?
-		var requirement: SecRequirement?
+
 		var mountedCode: SecStaticCode?
-		guard SecCodeCopySelf([], &ownCode) == errSecSuccess, let ownCode,
-			SecCodeCopyStaticCode(ownCode, [], &staticOwnCode) == errSecSuccess, let staticOwnCode,
-			SecCodeCopyDesignatedRequirement(staticOwnCode, [], &requirement) == errSecSuccess,
-			SecStaticCodeCreateWithPath(app as CFURL, [], &mountedCode) == errSecSuccess,
-			let mountedCode,
-			SecStaticCodeCheckValidity(
-				mountedCode,
-				SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode),
-				requirement) == errSecSuccess
+		guard SecStaticCodeCreateWithPath(app as CFURL, [], &mountedCode) == errSecSuccess,
+			let mountedCode
 		else { throw InstallFailure(message: "This update couldn't be verified.") }
+
+		let requirement: SecRequirement?
+		switch runningCodeRequirementPolicy {
+		case .runningProcess:
+			var ownCode: SecCode?
+			var staticOwnCode: SecStaticCode?
+			guard SecCodeCopySelf([], &ownCode) == errSecSuccess, let ownCode,
+				SecCodeCopyStaticCode(ownCode, [], &staticOwnCode) == errSecSuccess, let staticOwnCode
+			else { throw InstallFailure(message: "This update couldn't be verified.") }
+			requirement = try resolveRequirement(for: staticOwnCode)
+		case .staticCode(let referenceCode):
+			requirement = try resolveRequirement(for: referenceCode)
+		case .designatedRequirement(let explicitRequirement):
+			requirement = explicitRequirement
+		case .adHoc:
+			requirement = nil
+		}
+
+		let validationFlags = SecCSFlags(
+			rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode
+		)
+		guard SecStaticCodeCheckValidity(mountedCode, validationFlags, requirement) == errSecSuccess else {
+			throw InstallFailure(message: "This update couldn't be verified.")
+		}
+
+		// In ad-hoc mode (requirement == nil), still verify the embedded CodeDirectory
+		// identifier matches AppIdentity.bundleIdentifier rather than trusting Info.plist alone.
+		if requirement == nil {
+			var mountedInfoRef: CFDictionary?
+			guard SecCodeCopySigningInformation(
+				mountedCode,
+				SecCSFlags(rawValue: kSecCSSigningInformation),
+				&mountedInfoRef
+			) == errSecSuccess,
+				let mountedInfo = mountedInfoRef as? [String: Any],
+				mountedInfo[kSecCodeInfoIdentifier as String] as? String == AppIdentity.bundleIdentifier
+			else { throw InstallFailure(message: "This update couldn't be verified.") }
+		}
+	}
+
+	private nonisolated static func resolveRequirement(for staticCode: SecStaticCode) throws -> SecRequirement? {
+		var signingInfoRef: CFDictionary?
+		guard SecCodeCopySigningInformation(
+			staticCode,
+			SecCSFlags(rawValue: kSecCSSigningInformation),
+			&signingInfoRef
+		) == errSecSuccess,
+			let info = signingInfoRef as? [String: Any],
+			let identifier = info[kSecCodeInfoIdentifier as String] as? String,
+			!identifier.isEmpty
+		else { throw InstallFailure(message: "This update couldn't be verified.") }
+
+		let teamID = info[kSecCodeInfoTeamIdentifier as String] as? String
+		let flags = (info[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value ?? 0
+		guard let mode = CodeSigningMode.resolve(teamIdentifier: teamID, flags: flags) else {
+			throw InstallFailure(message: "This update couldn't be verified.")
+		}
+		switch mode {
+		case .teamSigned:
+			var requirement: SecRequirement?
+			guard SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess,
+				let requirement
+			else { throw InstallFailure(message: "This update couldn't be verified.") }
+			return requirement
+		case .adHoc:
+			return nil
+		}
 	}
 
 	@discardableResult
@@ -385,6 +470,9 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Send
 		didFinishDownloadingTo location: URL
 	) {
 		do {
+			if let finalURL = downloadTask.response?.url, !ReleaseURLPolicy.isTrustedDownloadHop(finalURL) {
+				throw InstallFailure(message: "This update couldn't be verified.")
+			}
 			let size = (try FileManager.default.attributesOfItem(atPath: location.path)[.size] as? Int) ?? 0
 			guard size <= Self.maximumBytes else {
 				state.withLock { $0.tooLarge = true }

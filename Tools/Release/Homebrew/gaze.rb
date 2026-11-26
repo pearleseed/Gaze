@@ -3,15 +3,22 @@
 #
 #     brew install --cask pearleseed/gaze/gaze
 #
-# Gaze is not notarized, so macOS would block the first launch. The postflight
-# clears the quarantine flag on install and on every upgrade, which is what the
-# manual `xattr` step in the README does. Homebrew's official cask repository
-# only accepts notarized apps, which is why this is a separate tap.
+# Gaze releases are not notarized, so macOS Gatekeeper would block the first
+# launch. The postflight clears the quarantine flag on install and on every
+# upgrade, matching the manual `xattr` step in the README.
 cask "gaze" do
   version "0.1.12"
-  sha256 "7ca8b375dc3c9f59426c6d4206f3028139303766e907cc1a76f9b68fbbf62c94"
 
-  url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze.dmg"
+  on_arm do
+    sha256 :no_check
+    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-13-arm64.dmg"
+  end
+
+  on_intel do
+    sha256 :no_check
+    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-13-x86_64.dmg"
+  end
+
   name "Gaze"
   desc "Face ID-style face unlock"
   homepage "https://github.com/pearleseed/Gaze"
@@ -30,6 +37,8 @@ cask "gaze" do
 
   zap trash: [
     "~/Library/Application Support/Gaze",
+    "~/Library/Caches/com.pearleseed.Gaze",
+    "~/Library/Group Containers/group.com.pearleseed.Gaze",
     "~/Library/Preferences/com.pearleseed.Gaze.plist",
   ]
 end

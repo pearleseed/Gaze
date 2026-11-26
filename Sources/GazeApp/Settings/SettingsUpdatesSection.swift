@@ -132,8 +132,8 @@ struct SettingsUpdatesSection: View {
 
 	private var releaseRowDetail: String? {
 		switch releases.state {
-		case .idle: return "Check gazeunlock.com for a new build."
-		case .checking: return "Checking gazeunlock.com…"
+		case .idle: return "Check GitHub for a new build."
+		case .checking: return "Checking GitHub…"
 		case .upToDate: return "Gaze is up to date"
 		case .available(let release):
 			if case .failed(let message) = releases.installer.state { return message }
@@ -166,7 +166,7 @@ struct SettingsUpdatesSection: View {
 
 	private var isInstallOffered: Bool {
 		guard case .available(let release) = releases.state else { return false }
-		return release.downloadURL != nil
+		return release.isInstallable
 	}
 
 	private var canInstall: Bool {

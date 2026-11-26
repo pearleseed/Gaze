@@ -6,12 +6,12 @@ import Synchronization
 import UserNotifications
 import os
 
-/// Checks gazeunlock.com for a newer release.
+/// Checks GitHub Releases for a newer version of Gaze.
 ///
-/// It offers, and does not install. The download is opened in the browser rather than
-/// fetched, unpacked and swapped in underneath the running app: replacing a bundle while it
-/// is executing is how an updater turns a bad release into an app that will not launch, and
-/// Gaze is the thing standing between its user and their locked Mac.
+/// Queries the GitHub Releases API for `pearleseed/Gaze`, selects the host-architecture DMG
+/// (falling back to a universal DMG), verifies SHA-256 via GitHub's native asset `digest`
+/// or the matching `.sha256` sidecar asset, and degrades cleanly to browser download when no
+/// verified SHA-256 is available.
 @Observable
 @MainActor
 package final class ReleaseUpdateChecker {
@@ -29,6 +29,10 @@ package final class ReleaseUpdateChecker {
 		package let downloadURL: URL?
 		package let downloadSHA256: String?
 
+		package var isInstallable: Bool {
+			downloadURL != nil && downloadSHA256 != nil
+		}
+
 		package init(tag: String, name: String, notes: String, downloadURL: URL?, downloadSHA256: String?) {
 			self.tag = tag
 			self.name = name
@@ -43,7 +47,7 @@ package final class ReleaseUpdateChecker {
 		case checking
 		case upToDate
 		case available(Release)
-		/// Reached the site and could not make sense of the answer, or could not reach it.
+		/// Reached GitHub and could not make sense of the answer, or could not reach it.
 		case failed(String)
 	}
 
@@ -56,13 +60,31 @@ package final class ReleaseUpdateChecker {
 	private let defaults: UserDefaults
 	private let sessionConfiguration: () -> URLSessionConfiguration
 	private let startupDelay: Duration
+	private let hostArchitecture: String
+	private let versionOverride: String?
 
-	package init(defaults: UserDefaults = .standard,
+	package static var currentHostArchitecture: String {
+		#if arch(arm64)
+		return "arm64"
+		#elseif arch(x86_64)
+		return "x86_64"
+		#else
+		return "arm64"
+		#endif
+	}
+
+	package init(
+		defaults: UserDefaults = .standard,
 		sessionConfiguration: @escaping () -> URLSessionConfiguration = ReleaseURLPolicy.sessionConfiguration,
-		startupDelay: Duration = .seconds(8)) {
+		startupDelay: Duration = .seconds(8),
+		hostArchitecture: String = ReleaseUpdateChecker.currentHostArchitecture,
+		currentVersion: String? = nil
+	) {
 		self.defaults = defaults
 		self.sessionConfiguration = sessionConfiguration
 		self.startupDelay = startupDelay
+		self.hostArchitecture = hostArchitecture
+		self.versionOverride = currentVersion
 		// The notification delegate cannot reach back through `.shared`: the lifecycle
 		// harness forbids that reference file-wide, so each instance registers itself.
 		ReleaseNotificationDelegate.shared.setChecker(self)
@@ -70,17 +92,12 @@ package final class ReleaseUpdateChecker {
 
 	/// The version this bundle claims to be.
 	package var currentVersion: String {
-		Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+		versionOverride ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
 	}
 
 	// MARK: - Scheduling
 
 	/// When the last successful check finished, so a relaunch doesn't mean a fresh check.
-	///
-	/// In `UserDefaults` rather than memory because the common shape of this app's life is
-	/// short runs: it is a menu bar agent people quit and reopen. Held in memory, "once a
-	/// day" would become "every launch", which for someone who opens it five times a day is
-	/// five requests for a document that changes a few times a year.
 	private static let lastCheckKey = "lastReleaseCheck"
 
 	private var lastCheck: Date? {
@@ -89,9 +106,6 @@ package final class ReleaseUpdateChecker {
 	}
 
 	/// The last version a notification was posted for, so each version notifies once.
-	///
-	/// Persisted in `UserDefaults` rather than memory: the app is often quit and reopened,
-	/// and re-notifying on every launch would train people to dismiss it unread.
 	private static let lastNotifiedTagKey = "lastNotifiedReleaseTag"
 
 	private var lastNotifiedTag: String? {
@@ -110,7 +124,7 @@ package final class ReleaseUpdateChecker {
 	private static let minimumInterval: TimeInterval = 60 * 60
 
 	/// Randomised per launch and added to the daily check, so every copy of the app
-	/// does not poll the site in the same second.
+	/// does not poll GitHub in the same second.
 	private static let maximumJitter: TimeInterval = 30 * 60
 
 	private var timer: Timer?
@@ -128,16 +142,7 @@ package final class ReleaseUpdateChecker {
 	/// so a slow task from before a stop/restart can never nil out newer work.
 	private var scheduleGeneration = 0
 
-    /// Starts the background schedule: one check shortly after launch, then daily.
-	///
-	/// Without this the feature was a button. Somebody who never opens Settings — which is
-	/// most people, since the app's whole point is that it works while they are not looking
-	/// at it — would never hear that a new version existed, which makes an update checker
-	/// that only checks on demand almost exactly as useful as no update checker.
-	///
-	/// Deferred a few seconds past launch. Startup is already doing the work that matters
-	/// (the lock watcher, the models) and a release check is the least urgent thing the app
-	/// will do all day; it should not be competing for the network while the camera warms.
+	/// Starts the background schedule: one check shortly after launch, then daily.
 	package func startScheduledChecks() {
 		guard timer == nil, scheduledWork == nil else { return }
 
@@ -181,8 +186,6 @@ package final class ReleaseUpdateChecker {
 	}
 
 	/// Stops the background schedule and cancels any scheduled check in flight.
-	///
-	/// Stopping twice is harmless, and starting again afterwards schedules fresh.
 	package func stopScheduledChecks() {
 		scheduleGeneration += 1
 		timer?.invalidate()
@@ -223,14 +226,11 @@ package final class ReleaseUpdateChecker {
 
 	/// Checks only if enough time has passed, and never while offering an update.
 	///
-	/// The second guard matters: once `available` is on screen, re-checking can only either
-	/// confirm it or — on a flaky connection — replace a real answer with "couldn't reach
-	/// gazeunlock.com", turning a working notification into an error nobody asked for.
+	/// Once `available` is on screen, re-checking can only either confirm it or — on a
+	/// flaky connection — replace a real answer with "couldn't reach GitHub", turning a
+	/// working notification into an error nobody asked for.
 	package func checkIfDue() async {
 		if case .available = state { return }
-		// Never while locked: there is nobody to tell, and the next unlock or the
-		// next scheduled time picks the check up. The timestamp is left alone so
-		// the check stays due rather than looking freshly done.
 		if Self.isLocked() { return }
 		if let last = lastCheck {
 			let elapsed = Date().timeIntervalSince(last)
@@ -264,7 +264,7 @@ package final class ReleaseUpdateChecker {
 			if cancelled {
 				state = previous
 			} else if keepsOffer, case .failed = state {
-				// Not reaching the server says nothing about the update already found.
+				// Not reaching GitHub says nothing about the update already found.
 				state = previous
 			} else {
 				switch state {
@@ -275,99 +275,232 @@ package final class ReleaseUpdateChecker {
 		}
 
 		do {
-			var request = URLRequest(url: Self.feed)
-			// Short. This runs on a timer in the background and, when someone presses the
-			// button, in front of a spinner — neither is a reason to hold a connection open
-			// on a flaky network.
-			request.timeoutInterval = 15
-			request.cachePolicy = .reloadRevalidatingCacheData
+			switch try await fetchFeed() {
+			case .notFound:
+				Self.logger.notice("Checked \(Self.feed.absoluteString, privacy: .public): HTTP 404 — up to date")
+				state = .upToDate
+				return
+			case .failed(let message):
+				state = .failed(message)
+				return
+			case .data(let data):
+				guard let payload = try? JSONDecoder().decode(GitHubRelease.self, from: data) else {
+					state = .failed("Couldn't read the update list.")
+					return
+				}
 
-			let session = URLSession(configuration: sessionConfiguration(),
-				delegate: ReleaseFeedRedirectPolicy(), delegateQueue: nil)
-			defer { session.invalidateAndCancel() }
-			let (bytes, response) = try await session.bytes(for: request)
-			// A stop that lands mid-check must surface as a restored prior
-			// state, not as an answer from the server.
-			try Task.checkCancellation()
-			guard let http = response as? HTTPURLResponse, let finalURL = http.url,
-				ReleaseURLPolicy.isTrusted(finalURL), (200..<300).contains(http.statusCode) else {
-				let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-				Self.logger.error("Release check failed: HTTP \(code, privacy: .public)")
-				state = .failed("The update server answered \(code).")
+				if payload.draft == true || payload.prerelease == true {
+					Self.logger.notice(
+						"Checked \(Self.feed.absoluteString, privacy: .public): latest \(payload.tagName, privacy: .public) is draft or prerelease — up to date"
+					)
+					state = .upToDate
+					return
+				}
+
+				guard let candidate = Version(payload.tagName), let current = Version(currentVersion) else {
+					state = .failed("Couldn't read the release version.")
+					return
+				}
+				guard candidate > current else {
+					Self.logger.notice(
+						"Checked \(Self.feed.absoluteString, privacy: .public): latest \(payload.tagName, privacy: .public), running \(self.currentVersion, privacy: .public) — up to date"
+					)
+					state = .upToDate
+					return
+				}
+
+				let assets = payload.assets ?? []
+				let dmgAsset = Self.selectDMGAsset(from: assets, hostArchitecture: hostArchitecture)
+				let downloadURL = dmgAsset.flatMap { ReleaseURLPolicy.download($0.browserDownloadURL) }
+				let downloadSHA256: String?
+				if let dmgAsset, downloadURL != nil {
+					downloadSHA256 = try await resolveSHA256(for: dmgAsset, in: assets)
+				} else {
+					downloadSHA256 = nil
+				}
+
+				let release = Release(
+					tag: payload.tagName,
+					name: payload.name ?? "",
+					notes: payload.body ?? "",
+					downloadURL: downloadURL,
+					downloadSHA256: downloadSHA256
+				)
+				state = .available(release)
+				Self.logger.notice("Update available: \(payload.tagName, privacy: .public)")
+				// One notification per version, however often the state is re-entered.
+				if lastNotifiedTag != release.tag {
+					lastNotifiedTag = release.tag
+					if let notificationPoster {
+						notificationPoster(release)
+					} else {
+						ReleaseUpdateChecker.postNotification(for: release)
+					}
+				}
+			}
+		} catch {
+			if Self.isCancellation(error) {
+				cancelled = true
 				return
 			}
-			guard response.expectedContentLength <= ReleaseURLPolicy.maximumFeedBytes else {
-				state = .failed("The update list is too large.")
-				return
+			state = .failed("Couldn't reach GitHub.")
+		}
+	}
+
+	private enum FeedFetchResult {
+		case data(Data)
+		case notFound
+		case failed(String)
+	}
+
+	private func fetchFeed() async throws -> FeedFetchResult {
+		var request = URLRequest(url: Self.feed)
+		request.timeoutInterval = 15
+		request.cachePolicy = .reloadRevalidatingCacheData
+		request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+		request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+		request.setValue("Gaze/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+
+		let session = URLSession(
+			configuration: sessionConfiguration(),
+			delegate: ReleaseFeedRedirectPolicy(),
+			delegateQueue: nil
+		)
+		defer { session.invalidateAndCancel() }
+		let (bytes, response) = try await session.bytes(for: request)
+		try Task.checkCancellation()
+
+		guard let http = response as? HTTPURLResponse, let finalURL = http.url,
+			ReleaseURLPolicy.isTrustedFeed(finalURL)
+		else {
+			let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+			Self.logger.error("Release check failed: untrusted response or HTTP \(code, privacy: .public)")
+			return .failed("GitHub answered \(code).")
+		}
+		if http.statusCode == 404 {
+			return .notFound
+		}
+		guard (200..<300).contains(http.statusCode) else {
+			Self.logger.error("Release check failed: HTTP \(http.statusCode, privacy: .public)")
+			return .failed("GitHub answered \(http.statusCode).")
+		}
+		guard response.expectedContentLength <= ReleaseURLPolicy.maximumFeedBytes else {
+			return .failed("The update list is too large.")
+		}
+		var data = Data()
+		for try await byte in bytes {
+			try Task.checkCancellation()
+			guard data.count < ReleaseURLPolicy.maximumFeedBytes else {
+				return .failed("The update list is too large.")
+			}
+			data.append(byte)
+		}
+		try Task.checkCancellation()
+		return .data(data)
+	}
+
+	private func resolveSHA256(
+		for dmgAsset: GitHubRelease.Asset, in assets: [GitHubRelease.Asset]
+	) async throws -> String? {
+		if let inline = Self.parseAssetDigest(dmgAsset.digest) {
+			return inline
+		}
+		guard let sidecar = assets.first(where: { $0.name == "\(dmgAsset.name).sha256" }),
+			let sidecarURL = ReleaseURLPolicy.download(sidecar.browserDownloadURL)
+		else {
+			return nil
+		}
+
+		do {
+			var request = URLRequest(url: sidecarURL)
+			request.timeoutInterval = 15
+			request.cachePolicy = .reloadRevalidatingCacheData
+			request.setValue("Gaze/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+
+			let session = URLSession(
+				configuration: sessionConfiguration(),
+				delegate: ReleaseDownloadRedirectPolicy(),
+				delegateQueue: nil
+			)
+			defer { session.invalidateAndCancel() }
+			let (bytes, response) = try await session.bytes(for: request)
+			try Task.checkCancellation()
+
+			guard let http = response as? HTTPURLResponse, let finalURL = http.url,
+				ReleaseURLPolicy.isTrustedDownloadHop(finalURL),
+				(200..<300).contains(http.statusCode),
+				response.expectedContentLength <= ReleaseURLPolicy.maximumChecksumBytes
+			else {
+				return nil
 			}
 			var data = Data()
 			for try await byte in bytes {
 				try Task.checkCancellation()
-				guard data.count < ReleaseURLPolicy.maximumFeedBytes else {
-					state = .failed("The update list is too large.")
-					return
-				}
 				data.append(byte)
+				guard data.count <= ReleaseURLPolicy.maximumChecksumBytes else { return nil }
 			}
 			try Task.checkCancellation()
-
-			guard let payload = try? JSONDecoder().decode(Feed.self, from: data) else {
-				state = .failed("Couldn't read the update list.")
-				return
-			}
-
-			guard let latest = payload.latest else {
-				// A site with no published releases is up to date by definition.
-				state = .upToDate
-				return
-			}
-
-			// The app has no prerelease channel, so a prerelease build is never offered,
-			// whatever the tag says. A check, not a failure: the timestamp still advances.
-			if latest.prerelease == true {
-				Self.logger.notice(
-					"Checked \(Self.feed.absoluteString, privacy: .public): latest \(latest.tag, privacy: .public) is prerelease — up to date")
-				state = .upToDate
-				return
-			}
-
-			guard let candidate = Version(latest.tag), let current = Version(currentVersion) else {
-				state = .failed("Couldn't read the release version.")
-				return
-			}
-			guard candidate > current else {
-				Self.logger.notice(
-					"Checked \(Self.feed.absoluteString, privacy: .public): latest \(latest.tag, privacy: .public), running \(self.currentVersion, privacy: .public) — up to date")
-				state = .upToDate
-				return
-			}
-
-		let release = Release(
-			tag: latest.tag,
-			name: latest.name,
-			notes: latest.notes,
-			downloadURL: ReleaseURLPolicy.download(latest.download?.url),
-			downloadSHA256: latest.download?.sha256)
-			state = .available(release)
-			Self.logger.notice("Update available: \(latest.tag, privacy: .public)")
-			// One notification per version, however often the state is re-entered.
-			if lastNotifiedTag != release.tag {
-				lastNotifiedTag = release.tag
-				if let notificationPoster { notificationPoster(release) } else { ReleaseUpdateChecker.postNotification(for: release) }
-			}
+			return Self.parseChecksumFile(data, expectedFilename: dmgAsset.name)
 		} catch {
-			// A stopped schedule is not an offline Mac. Cancellation — the
-			// task dying, a CancellationError, or the session reporting a
-			// cancelled request — puts the previous state back and leaves
-			// lastReleaseCheck alone.
-			if error is CancellationError
-				|| (error as? URLError)?.code == .cancelled || Task.isCancelled {
-				cancelled = true
-				return
-			}
-			// Offline is not an error worth alarming anyone about — it is the normal state of
-			// a laptop half the time — so this says what happened and stops.
-			state = .failed("Couldn't reach gazeunlock.com.")
+			if Self.isCancellation(error) { throw error }
+			Self.logger.notice("SHA-256 sidecar unavailable for \(dmgAsset.name, privacy: .public); degrading to browser download")
+			return nil
+		}
+	}
+
+	private static func isCancellation(_ error: any Error) -> Bool {
+		error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled
+	}
+
+	private static func selectDMGAsset(
+		from assets: [GitHubRelease.Asset], hostArchitecture: String
+	) -> GitHubRelease.Asset? {
+		let archSuffix = "-\(hostArchitecture).dmg"
+		if let archMatch = assets.first(where: {
+			$0.name.hasPrefix("Gaze-") && $0.name.hasSuffix(archSuffix)
+		}) {
+			return archMatch
+		}
+		return assets.first(where: {
+			$0.name == "Gaze.dmg"
+				|| ($0.name.hasPrefix("Gaze-")
+					&& $0.name.hasSuffix(".dmg")
+					&& !$0.name.hasSuffix("-arm64.dmg")
+					&& !$0.name.hasSuffix("-x86_64.dmg"))
+		})
+	}
+
+	private static func parseAssetDigest(_ digest: String?) -> String? {
+		guard let digest else { return nil }
+		let trimmed = digest.trimmingCharacters(in: .whitespacesAndNewlines)
+		let prefix = "sha256:"
+		guard trimmed.count == prefix.count + 64,
+			trimmed.prefix(prefix.count).lowercased() == prefix
+		else { return nil }
+		let hex = String(trimmed.dropFirst(prefix.count)).lowercased()
+		return isValidSHA256Hex(hex) ? hex : nil
+	}
+
+	private static func parseChecksumFile(_ data: Data, expectedFilename: String) -> String? {
+		guard data.count <= ReleaseURLPolicy.maximumChecksumBytes,
+			let text = String(data: data, encoding: .utf8),
+			let firstLine = text.split(whereSeparator: \.isNewline).first
+		else { return nil }
+		let fields = firstLine.split(maxSplits: 1, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace)
+		guard let rawHex = fields.first else { return nil }
+		let hex = String(rawHex).lowercased()
+		guard isValidSHA256Hex(hex) else { return nil }
+		if fields.count == 2 {
+			var filename = String(fields[1]).trimmingCharacters(in: .whitespaces)
+			if filename.hasPrefix("*") { filename.removeFirst() }
+			guard filename == expectedFilename else { return nil }
+		}
+		return hex
+	}
+
+	private static func isValidSHA256Hex(_ value: String) -> Bool {
+		value.count == 64 && value.utf8.allSatisfy {
+			(48...57).contains($0) || (97...102).contains($0)
 		}
 	}
 
@@ -384,7 +517,7 @@ package final class ReleaseUpdateChecker {
 	/// Opens the download in the browser.
 	package func openDownload() {
 		guard case .available(let release) = state else { return }
-		let url = release.downloadURL.flatMap { ReleaseURLPolicy.isTrusted($0) ? $0 : nil }
+		let url = release.downloadURL.flatMap { ReleaseURLPolicy.isTrustedDownload($0) ? $0 : nil }
 			?? ReleaseURLPolicy.releases
 		NSWorkspace.shared.open(url)
 	}
@@ -399,10 +532,10 @@ package final class ReleaseUpdateChecker {
 		// command-line runs); there is nobody to notify there anyway.
 		guard Bundle.main.bundleURL.pathExtension == "app" else { return }
 		let title = "Gaze \(Self.displayVersion(for: release.tag)) is ready"
-		let url = release.downloadURL.flatMap { ReleaseURLPolicy.isTrusted($0) ? $0 : nil }
+		let url = release.downloadURL.flatMap { ReleaseURLPolicy.isTrustedDownload($0) ? $0 : nil }
 			?? ReleaseURLPolicy.releases
 		let urlString = url.absoluteString
-		let installable = release.downloadSHA256 != nil
+		let installable = release.isInstallable
 		let tag = release.tag
 		Task {
 			let center = UNUserNotificationCenter.current()
@@ -417,8 +550,12 @@ package final class ReleaseUpdateChecker {
 			guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
 			let content = UNMutableNotificationContent()
 			content.title = title
-			content.body = "Install it now, or anytime from Settings."
-			content.categoryIdentifier = ReleaseNotificationDelegate.categoryID
+			content.body = installable
+				? "Install it now, or anytime from Settings."
+				: "Download it from GitHub, or open Settings."
+			if installable {
+				content.categoryIdentifier = ReleaseNotificationDelegate.categoryID
+			}
 			content.userInfo = ["url": urlString, "installable": installable]
 			let request = UNNotificationRequest(
 				identifier: "gaze-release-\(tag)", content: content, trigger: nil)
@@ -511,22 +648,35 @@ package final class ReleaseUpdateChecker {
 
 	// MARK: - Wire format
 
-	private struct Feed: Decodable {
-		let latest: Item?
+	private struct GitHubRelease: Decodable {
+		let tagName: String
+		let name: String?
+		let body: String?
+		let prerelease: Bool?
+		let draft: Bool?
+		let assets: [Asset]?
 
-		struct Item: Decodable {
-			let tag: String
-			let name: String
-			let notes: String
-			let prerelease: Bool?
-			let download: Download?
+		enum CodingKeys: String, CodingKey {
+			case tagName = "tag_name"
+			case name
+			case body
+			case prerelease
+			case draft
+			case assets
 		}
 
-		struct Download: Decodable {
-			let url: String
-			let name: String?
+		struct Asset: Decodable {
+			let name: String
+			let browserDownloadURL: String
+			let digest: String?
 			let size: Int?
-			let sha256: String?
+
+			enum CodingKeys: String, CodingKey {
+				case name
+				case browserDownloadURL = "browser_download_url"
+				case digest
+				case size
+			}
 		}
 	}
 }
@@ -534,7 +684,7 @@ package final class ReleaseUpdateChecker {
 /// Routes the update notification: Install runs the in-app installer, clicking opens
 /// Settings on Updates, and only a release with no verified download falls back to the
 /// browser. The URL was allow-listed when the notification was posted and is checked
-/// again here, so only gazeunlock.com opens.
+/// again here, so only GitHub opens.
 private final class ReleaseNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
 	static let shared = ReleaseNotificationDelegate()
 	static let categoryID = "gaze-update"
@@ -561,19 +711,20 @@ private final class ReleaseNotificationDelegate: NSObject, UNUserNotificationCen
 	func userNotificationCenter(
 		_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
 	) async {
-		if response.actionIdentifier == Self.installActionID {
+		let content = response.notification.request.content
+		let installable = content.userInfo["installable"] as? Bool == true
+		if response.actionIdentifier == Self.installActionID, installable {
 			let checker = checkerBox.withLock { $0.value }
 			await MainActor.run { checker?.install() }
 			return
 		}
 		guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-		let content = response.notification.request.content
-		if content.userInfo["installable"] as? Bool == true {
+		if installable {
 			await MainActor.run { SettingsNavigator.shared.openUpdates() }
 			return
 		}
 		guard let value = content.userInfo["url"] as? String,
-			let url = URL(string: value), ReleaseURLPolicy.isTrusted(url)
+			let url = URL(string: value), ReleaseURLPolicy.isTrustedBrowserDestination(url)
 		else { return }
 		_ = await MainActor.run { NSWorkspace.shared.open(url) }
 	}
