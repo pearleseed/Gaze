@@ -64,6 +64,26 @@ private func naiveScalarCosine(_ a: [Float], _ b: [Float]) -> Float {
 	return score.isFinite ? score : 0
 }
 
+private func withStridedMultiArray<T>(
+	backing: inout [T],
+	shape: [NSNumber],
+	dataType: MLMultiArrayDataType,
+	strides: [NSNumber],
+	verify: (MLMultiArray) throws -> Void
+) throws {
+	try backing.withUnsafeMutableBytes { raw in
+		let baseAddress = try #require(raw.baseAddress)
+		let array = try MLMultiArray(
+			dataPointer: baseAddress,
+			shape: shape,
+			dataType: dataType,
+			strides: strides,
+			deallocator: nil
+		)
+		try verify(array)
+	}
+}
+
 @Suite("Recognition & Core ML Performance")
 struct RecognitionPerformanceTests {
 
@@ -221,44 +241,38 @@ struct RecognitionPerformanceTests {
 
 		// Non-contiguous Float32 (row stride 4 for 3 columns, skipping padding 999 / 888)
 		var paddedF32: [Float] = [1.25, -2.5, 3.75, 999.0, 4.5, -5.25, 6.125, 888.0]
-		let stridedF32 = try paddedF32.withUnsafeMutableBytes { raw in
-			try MLMultiArray(
-				dataPointer: raw.baseAddress!,
-				shape: [2, 3],
-				dataType: .float32,
-				strides: [4, 1],
-				deallocator: nil
-			)
+		try withStridedMultiArray(
+			backing: &paddedF32,
+			shape: [2, 3],
+			dataType: .float32,
+			strides: [4, 1]
+		) { stridedF32 in
+			#expect(CoreMLEmbedder.extractFloats(from: stridedF32) == [1.25, -2.5, 3.75, 4.5, -5.25, 6.125])
 		}
-		#expect(CoreMLEmbedder.extractFloats(from: stridedF32) == [1.25, -2.5, 3.75, 4.5, -5.25, 6.125])
 
 		// Transposed non-contiguous Float32 (strides [1, 2] on shape [2, 3])
 		var transposedBacking: [Float] = [10, 20, 30, 40, 50, 60]
-		let transposedF32 = try transposedBacking.withUnsafeMutableBytes { raw in
-			try MLMultiArray(
-				dataPointer: raw.baseAddress!,
-				shape: [2, 3],
-				dataType: .float32,
-				strides: [1, 2],
-				deallocator: nil
-			)
+		try withStridedMultiArray(
+			backing: &transposedBacking,
+			shape: [2, 3],
+			dataType: .float32,
+			strides: [1, 2]
+		) { transposedF32 in
+			let expectedTransposed = (0..<transposedF32.count).map { transposedF32[$0].floatValue }
+			#expect(CoreMLEmbedder.extractFloats(from: transposedF32) == expectedTransposed)
 		}
-		let expectedTransposed = (0..<transposedF32.count).map { transposedF32[$0].floatValue }
-		#expect(CoreMLEmbedder.extractFloats(from: transposedF32) == expectedTransposed)
 
 		// Non-contiguous Float16 (row stride 4 for 3 columns)
 		var paddedF16Raw: [UInt16] = [0x3c00, 0x4000, 0x4200, 0x7c00, 0xc400, 0xc600, 0x3800, 0x7e00]
-		let stridedF16 = try paddedF16Raw.withUnsafeMutableBytes { raw in
-			try MLMultiArray(
-				dataPointer: raw.baseAddress!,
-				shape: [2, 3],
-				dataType: .float16,
-				strides: [4, 1],
-				deallocator: nil
-			)
+		try withStridedMultiArray(
+			backing: &paddedF16Raw,
+			shape: [2, 3],
+			dataType: .float16,
+			strides: [4, 1]
+		) { stridedF16 in
+			let expectedStridedF16 = (0..<stridedF16.count).map { stridedF16[$0].floatValue }
+			#expect(CoreMLEmbedder.extractFloats(from: stridedF16) == expectedStridedF16)
 		}
-		let expectedStridedF16 = (0..<stridedF16.count).map { stridedF16[$0].floatValue }
-		#expect(CoreMLEmbedder.extractFloats(from: stridedF16) == expectedStridedF16)
 
 		// Other data type (.double / .int32) falls back to subscript safely
 		let f64 = try MLMultiArray(shape: [2, 2], dataType: .double)
