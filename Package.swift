@@ -94,5 +94,17 @@ let package = Package(
 			path: "Tests/GazeCoreTests",
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
+		.testTarget(
+			name: "GazeSecurityTests",
+			dependencies: ["GazeSecurity", "GazeCore", "GazeCamera", "GazeRecognition", "GazeLockScreen"],
+			path: "Tests/GazeSecurityTests",
+			swiftSettings: [.swiftLanguageMode(.v6)]
+		),
+		.testTarget(
+			name: "GazeUITests",
+			dependencies: ["GazeApp", "GazeDesign", "GazeLockScreen", "GazeCore", "GazeTourKit", "GazeRecognition", "GazeSecurity"],
+			path: "Tests/GazeUITests",
+			swiftSettings: [.swiftLanguageMode(.v6)]
+		),
 	]
 )

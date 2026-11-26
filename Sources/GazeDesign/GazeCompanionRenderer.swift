@@ -64,30 +64,34 @@ final class SoftFaceGPU {
 	}
 }
 
-class TransparentFaceView: MTKView {
-	override var isOpaque: Bool { false }
-	var wantsContinuousRendering = false {
+package class TransparentFaceView: MTKView {
+	override package var isOpaque: Bool { false }
+	package var wantsContinuousRendering = false {
 		didSet {
-			guard wantsContinuousRendering != oldValue else { return }
+			guard wantsContinuousRendering != oldValue || isPaused == wantsContinuousRendering else { return }
 			updateRenderingState()
 		}
 	}
 
-	private func updateRenderingState() {
-		let paused = !wantsContinuousRendering || window == nil
-		if isPaused != paused { isPaused = paused }
+	package func updateRenderingState() {
+		let visibleInWindow = window.map { $0.isVisible && !$0.isMiniaturized } ?? false
+		let paused = !wantsContinuousRendering || !visibleInWindow
+		let transition = isPaused != paused
+		if transition { isPaused = paused }
 		if enableSetNeedsDisplay != paused { enableSetNeedsDisplay = paused }
-		if window != nil && isPaused { needsDisplay = true }
+		if transition && visibleInWindow && paused { needsDisplay = true }
 	}
 
-	override func viewDidMoveToWindow() {
+	override package func viewDidMoveToWindow() {
 		super.viewDidMoveToWindow()
 		matchBackingScale()
 		updateRenderingState()
 		observeDisplayChanges()
+		if window != nil { restartRendering() }
 	}
 
 	private var displayObservers: [(NotificationCenter, NSObjectProtocol)] = []
+	package private(set) var observedNotificationNamesForTesting: [Notification.Name] = []
 
 	/// Opening the lid shows the lock screen panel while the displays are still waking.
 	/// A face view made then got no drawable and a display link bound to no screen, so it
@@ -96,24 +100,35 @@ class TransparentFaceView: MTKView {
 	private func observeDisplayChanges() {
 		for (centre, token) in displayObservers { centre.removeObserver(token) }
 		displayObservers.removeAll()
+		observedNotificationNamesForTesting.removeAll()
 		guard let window else { return }
 		let restart: @Sendable (Notification) -> Void = { [weak self] _ in
 			MainActor.assumeIsolated { self?.restartRendering() }
 		}
 		let local = NotificationCenter.default
 		let workspace = NSWorkspace.shared.notificationCenter
-		displayObservers = [
-			(local, local.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main, using: restart)),
-			(local, local.addObserver(forName: NSWindow.didChangeScreenNotification, object: window, queue: .main, using: restart)),
-			(workspace, workspace.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main, using: restart)),
+		let registrations: [(NotificationCenter, Notification.Name, AnyObject?)] = [
+			(local, NSWindow.didChangeOcclusionStateNotification, window),
+			(local, NSWindow.didChangeScreenNotification, window),
+			(local, NSWindow.didMiniaturizeNotification, window),
+			(local, NSWindow.didDeminiaturizeNotification, window),
+			(local, NSWindow.didExposeNotification, window),
+			(workspace, NSWorkspace.screensDidWakeNotification, nil),
 		]
+		displayObservers = registrations.map { centre, name, object in
+			observedNotificationNamesForTesting.append(name)
+			return (centre, centre.addObserver(forName: name, object: object, queue: .main, using: restart))
+		}
 	}
 
-	func restartRendering() {
+	package func restartRendering() {
 		guard window != nil else { return }
 		matchBackingScale()
+		updateRenderingState()
 		if isPaused {
-			needsDisplay = true
+			if window?.isVisible == true, window?.isMiniaturized == false {
+				needsDisplay = true
+			}
 		} else {
 			// Re-arms the display link on whichever screen the window is on now.
 			isPaused = true
@@ -131,20 +146,45 @@ class TransparentFaceView: MTKView {
 		needsDisplay = true
 	}
 
-	override func layout() {
+	override package func layout() {
 		super.layout()
-		if isPaused { needsDisplay = true }
+		updateRenderingState()
+		if isPaused, window?.isVisible == true, window?.isMiniaturized == false {
+			needsDisplay = true
+		}
 	}
 
-	override func viewDidChangeBackingProperties() {
+	override package func viewWillDraw() {
+		super.viewWillDraw()
+		updateRenderingState()
+	}
+
+	override package func viewDidChangeBackingProperties() {
 		super.viewDidChangeBackingProperties()
 		matchBackingScale()
-		if isPaused { needsDisplay = true }
+		if isPaused, window?.isVisible == true, window?.isMiniaturized == false {
+			needsDisplay = true
+		}
 	}
 }
 
 @MainActor
 package struct GazeCompanionRenderer: NSViewRepresentable {
+	/// Inputs that affect a paused companion frame; identical values skip redundant redraws.
+	package struct PausedRenderState: Equatable, Sendable {
+		package var revision: Int
+		package var angle: Double
+		package var material: GazeCompanionMaterial
+		package var opacity: Float
+
+		package init(revision: Int, angle: Double, material: GazeCompanionMaterial, opacity: Float) {
+			self.revision = revision
+			self.angle = angle
+			self.material = material
+			self.opacity = opacity
+		}
+	}
+
 	package let pose: (TimeInterval) -> GazeCompanionPose
 	package let running: Bool
 	package var revision: Int
@@ -203,7 +243,14 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 	}
 
 	package func updateNSView(_ view: MTKView, context: Context) {
-		let coordinator = context.coordinator
+		applyState(to: view, coordinator: context.coordinator)
+	}
+
+	package func applyStateForTesting(to view: MTKView, coordinator: Coordinator) {
+		applyState(to: view, coordinator: coordinator)
+	}
+
+	private func applyState(to view: MTKView, coordinator: Coordinator) {
 		coordinator.pose = pose
 		coordinator.angle = angle
 		coordinator.material = material
@@ -224,10 +271,26 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 			coordinator.revision = revision
 			coordinator.frameTimes = []
 		}
-		(view as? TransparentFaceView)?.wantsContinuousRendering = running
-		if !running {
-			view.needsDisplay = true
-			if view.window != nil { view.draw() }
+		if let faceView = view as? TransparentFaceView {
+			faceView.wantsContinuousRendering = running
+			faceView.updateRenderingState()
+		}
+		if running {
+			coordinator.clearPausedRenderState()
+		} else {
+			let state = PausedRenderState(
+				revision: revision,
+				angle: angle,
+				material: material,
+				opacity: opacity
+			)
+			if coordinator.shouldRedrawWhenPaused(for: state) {
+				coordinator.recordPausedDrawTriggerForTesting()
+				view.needsDisplay = true
+				if let window = view.window, window.isVisible, !window.isMiniaturized {
+					view.draw()
+				}
+			}
 		}
 	}
 
@@ -236,6 +299,7 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 		view.isPaused = true
 		view.delegate = nil
 		coordinator.pose = nil
+		coordinator.clearPausedRenderState()
 	}
 
 	@MainActor
@@ -254,6 +318,22 @@ package struct GazeCompanionRenderer: NSViewRepresentable {
 		let frameBudget = DispatchSemaphore(value: 2)
 		private var missedFrames = 0
 		private var lastReport = 0.0
+		package private(set) var lastPausedRenderState: PausedRenderState?
+		package private(set) var pausedDrawTriggerCountForTesting = 0
+
+		package func clearPausedRenderState() {
+			lastPausedRenderState = nil
+		}
+
+		package func shouldRedrawWhenPaused(for state: PausedRenderState) -> Bool {
+			guard lastPausedRenderState != state else { return false }
+			lastPausedRenderState = state
+			return true
+		}
+
+		func recordPausedDrawTriggerForTesting() {
+			pausedDrawTriggerCountForTesting &+= 1
+		}
 
 		func finishDiagnostics(in view: MTKView, reason: String) {
 			if let summary = diagnostics?.finish() {

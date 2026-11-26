@@ -16,6 +16,152 @@ package final class LockScreenLight {
 
 	package static let shared = LockScreenLight()
 
+	/// Canonical quantized cache key for a rendered edge-glow bitmap.
+	package struct GlowCacheKey: Hashable, Sendable {
+		package let width: CGFloat
+		package let height: CGFloat
+		package let scale: CGFloat
+		package let notchRect: CGRect?
+
+		private let qWidth: Int
+		private let qHeight: Int
+		private let qScale: Int
+		private let qNotchX: Int?
+		private let qNotchY: Int?
+		private let qNotchWidth: Int?
+		private let qNotchHeight: Int?
+
+		package init(width: CGFloat, height: CGFloat, scale: CGFloat, notchRect: CGRect? = nil) {
+			let safeWidth = width.isFinite ? max(0, width) : 0
+			let safeHeight = height.isFinite ? max(0, height) : 0
+			let safeScale = scale.isFinite ? max(0, scale) : 0
+			self.qWidth = Self.quantize(safeWidth)
+			self.qHeight = Self.quantize(safeHeight)
+			self.qScale = Self.quantize(safeScale)
+			self.width = CGFloat(self.qWidth) / 100
+			self.height = CGFloat(self.qHeight) / 100
+			self.scale = CGFloat(self.qScale) / 100
+
+			if let raw = notchRect,
+				raw.origin.x.isFinite, raw.origin.y.isFinite,
+				raw.size.width.isFinite, raw.size.height.isFinite,
+				raw.size.width > 0, raw.size.height > 0 {
+				let standardized = raw.standardized
+				let qx = Self.quantize(standardized.origin.x)
+				let qy = Self.quantize(standardized.origin.y)
+				let qw = Self.quantize(standardized.size.width)
+				let qh = Self.quantize(standardized.size.height)
+				self.qNotchX = qx
+				self.qNotchY = qy
+				self.qNotchWidth = qw
+				self.qNotchHeight = qh
+				self.notchRect = CGRect(
+					x: CGFloat(qx) / 100,
+					y: CGFloat(qy) / 100,
+					width: CGFloat(qw) / 100,
+					height: CGFloat(qh) / 100
+				)
+			} else {
+				self.qNotchX = nil
+				self.qNotchY = nil
+				self.qNotchWidth = nil
+				self.qNotchHeight = nil
+				self.notchRect = nil
+			}
+		}
+
+		package init(size: CGSize, scale: CGFloat, notch: CGRect? = nil) {
+			self.init(width: size.width, height: size.height, scale: scale, notchRect: notch)
+		}
+
+		private static func quantize(_ value: CGFloat) -> Int {
+			Int((value * 100).rounded())
+		}
+
+		package static func == (lhs: Self, rhs: Self) -> Bool {
+			lhs.qWidth == rhs.qWidth
+				&& lhs.qHeight == rhs.qHeight
+				&& lhs.qScale == rhs.qScale
+				&& lhs.qNotchX == rhs.qNotchX
+				&& lhs.qNotchY == rhs.qNotchY
+				&& lhs.qNotchWidth == rhs.qNotchWidth
+				&& lhs.qNotchHeight == rhs.qNotchHeight
+		}
+
+		package func hash(into hasher: inout Hasher) {
+			hasher.combine(qWidth)
+			hasher.combine(qHeight)
+			hasher.combine(qScale)
+			hasher.combine(qNotchX)
+			hasher.combine(qNotchY)
+			hasher.combine(qNotchWidth)
+			hasher.combine(qNotchHeight)
+		}
+	}
+
+	/// Bounded LRU cache (1-2 entries for primary + external display) for blurred glow images.
+	@MainActor
+	package final class GlowCache {
+		private let maxEntries: Int
+		private let renderer: @MainActor (GlowCacheKey) -> CGImage?
+		private var entries: [(key: GlowCacheKey, image: CGImage)] = []
+
+		package init(
+			maxEntries: Int = 2,
+			renderer: @escaping @MainActor (GlowCacheKey) -> CGImage? = { LockScreenLight.renderGlowImage(for: $0) }
+		) {
+			self.maxEntries = max(1, maxEntries)
+			self.renderer = renderer
+		}
+
+		package var count: Int { entries.count }
+
+		package func cachedImage(for key: GlowCacheKey) -> CGImage? {
+			entries.first(where: { $0.key == key })?.image
+		}
+
+		package func image(for key: GlowCacheKey) -> CGImage? {
+			if let existingIndex = entries.firstIndex(where: { $0.key == key }) {
+				let entry = entries.remove(at: existingIndex)
+				entries.append(entry)
+				return entry.image
+			}
+			guard let image = renderer(key) else { return nil }
+			entries.append((key, image))
+			while entries.count > maxEntries {
+				entries.removeFirst()
+			}
+			return image
+		}
+
+		package func removeAll() {
+			entries.removeAll()
+		}
+	}
+
+	private static let glowCIContext = CIContext(options: [.cacheIntermediates: false])
+	private static let glowCache = GlowCache(maxEntries: 2)
+
+	package static func cachedGlowImage(for key: GlowCacheKey) -> CGImage? {
+		glowCache.image(for: key)
+	}
+
+	package static func renderGlowImage(for key: GlowCacheKey) -> CGImage? {
+		EdgeGlowView.render(
+			size: CGSize(width: key.width, height: key.height),
+			scale: key.scale,
+			notch: key.notchRect
+		)
+	}
+
+	package static var glowCacheCountForTesting: Int {
+		glowCache.count
+	}
+
+	package static func clearGlowCacheForTesting() {
+		glowCache.removeAll()
+	}
+
 	private final class UnfocusableWindow: NSWindow {
 		override var canBecomeKey: Bool { false }
 		override var canBecomeMain: Bool { false }
@@ -38,10 +184,12 @@ package final class LockScreenLight {
 
 		/// The housing in view coordinates.
 		private var notch: CGRect?
-		private var renderedSize: CGSize = .zero
+		private let initialScale: CGFloat
+		private var renderedKey: GlowCacheKey?
 
 		init(frame: NSRect, screen: NSScreen) {
 			notch = Self.notchRect(on: screen, in: frame.size)
+			initialScale = screen.backingScaleFactor
 			super.init(frame: frame)
 			wantsLayer = true
 			layer?.contentsGravity = .resize
@@ -52,6 +200,16 @@ package final class LockScreenLight {
 
 		override func layout() {
 			super.layout()
+			rebuild()
+		}
+
+		override func viewDidMoveToWindow() {
+			super.viewDidMoveToWindow()
+			rebuild()
+		}
+
+		override func viewDidChangeBackingProperties() {
+			super.viewDidChangeBackingProperties()
 			rebuild()
 		}
 
@@ -73,17 +231,18 @@ package final class LockScreenLight {
 		}
 
 		private func rebuild() {
-			guard bounds.width > 0, bounds.height > 0, bounds.size != renderedSize else { return }
-			renderedSize = bounds.size
-			let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-			layer?.contentsScale = scale
-			layer?.contents = Self.render(size: bounds.size, scale: scale, notch: notch)
+			let scale = window?.backingScaleFactor ?? initialScale
+			let key = GlowCacheKey(size: bounds.size, scale: scale, notch: notch)
+			guard key.width > 0, key.height > 0, key != renderedKey else { return }
+			renderedKey = key
+			layer?.contentsScale = key.scale
+			layer?.contents = LockScreenLight.cachedGlowImage(for: key)
 		}
 
-		private static func render(size: CGSize, scale: CGFloat, notch: CGRect?) -> CGImage? {
+		static func render(size: CGSize, scale: CGFloat, notch: CGRect?) -> CGImage? {
 			// The light reaches about seven percent of the short side inwards.
 			let reach = min(size.width, size.height) * 0.07
-			let width = Int(size.width * scale), height = Int(size.height * scale)
+			let width = Int((size.width * scale).rounded()), height = Int((size.height * scale).rounded())
 			guard width > 0, height > 0,
 				let space = CGColorSpace(name: CGColorSpace.sRGB),
 				let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
@@ -106,7 +265,7 @@ package final class LockScreenLight {
 				kCIInputImageKey: input.clampedToExtent(),
 				kCIInputRadiusKey: reach * 0.55 * scale,
 			])?.outputImage?.cropped(to: input.extent) else { return line }
-			return CIContext().createCGImage(blur, from: input.extent)
+			return LockScreenLight.glowCIContext.createCGImage(blur, from: input.extent)
 		}
 
 		/// Fades in, or appears instantly under Reduce Motion. The window fades with it.

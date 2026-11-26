@@ -90,6 +90,12 @@ struct UnlockAttemptsSection: View {
 		}
 	}
 
+	private struct PhotoLoadKey: Equatable {
+		let attemptID: UUID
+		let photoFile: String?
+		let revision: Int
+	}
+
 	@ViewBuilder
 	private func attemptRow(_ attempt: UnlockAttempt) -> some View {
 		if let image = log.photo(for: attempt) {
@@ -132,6 +138,9 @@ struct UnlockAttemptsSection: View {
 			SettingRow(title: Self.title(for: attempt), detail: Self.detail(for: attempt),
 				symbol: Self.symbol(for: attempt)) {
 				EmptyView()
+			}
+			.task(id: PhotoLoadKey(attemptID: attempt.id, photoFile: attempt.photoFile, revision: log.photoRevision)) {
+				log.loadPhotoIfNeeded(for: attempt)
 			}
 		}
 	}
