@@ -1,3 +1,4 @@
+import CoreVideo
 import Foundation
 import GazeCamera
 
@@ -18,6 +19,8 @@ package actor UnlockFrameEvaluator {
 		/// True when the match came from the upper face alone (the mask path). The
 		/// caller must require the movement challenge on this path, always.
 		package var viaUpperFace: Bool
+		package var spoofConfidence: Float? = nil
+		package var didRunSpoofClassifier: Bool = false
 
 		package init(
 			matched: Bool,
@@ -27,7 +30,9 @@ package actor UnlockFrameEvaluator {
 			comparedIdentity: Bool = true,
 			failure: Failure? = nil,
 			matchedPrint: Faceprint? = nil,
-			viaUpperFace: Bool = false
+			viaUpperFace: Bool = false,
+			spoofConfidence: Float? = nil,
+			didRunSpoofClassifier: Bool = false
 		) {
 			self.matched = matched
 			self.score = score
@@ -37,6 +42,8 @@ package actor UnlockFrameEvaluator {
 			self.failure = failure
 			self.matchedPrint = matchedPrint
 			self.viaUpperFace = viaUpperFace
+			self.spoofConfidence = spoofConfidence
+			self.didRunSpoofClassifier = didRunSpoofClassifier
 		}
 
 		package func permitsMatchHold(requiresAntiSpoof: Bool) -> Bool {
@@ -72,12 +79,20 @@ package actor UnlockFrameEvaluator {
 	private var classifierSpoofFrames = 0
 	package static let classifierFireFrames = 3
 	private let matcher: FaceTemplateMatcher
+	private let makeContextCrop: @Sendable (FaceSample, Int) -> CVPixelBuffer?
 
-	package init(embedder: any FaceEmbedder, faces: [FaceEnrollment], antiSpoof: AntiSpoofGate?, allowsMaskUnlock: Bool = false) {
+	package init(
+		embedder: any FaceEmbedder,
+		faces: [FaceEnrollment],
+		antiSpoof: AntiSpoofGate?,
+		allowsMaskUnlock: Bool = false,
+		makeContextCrop: @escaping @Sendable (FaceSample, Int) -> CVPixelBuffer? = { FaceAligner.contextCrop($0, side: $1) }
+	) {
 		self.embedder = embedder
 		self.faces = faces
 		self.antiSpoof = antiSpoof
 		self.allowsMaskUnlock = allowsMaskUnlock
+		self.makeContextCrop = makeContextCrop
 		// Learned prints match alongside the originals, so the face the Mac sees
 		// improves with use — but the originals alone anchor the drift guard.
 		self.matcher = FaceTemplateMatcher(templates: faces.map { $0.prints + $0.learnedPrints },
@@ -113,10 +128,11 @@ package actor UnlockFrameEvaluator {
 		guard let best else { return .rejected(.noEnrollment) }
 		let matched = best.score >= embedder.matchThreshold
 		if matched {
-			let decision = denyChecked(sample)
+			let deny = denyChecked(sample)
 			guard !Task.isCancelled else { return .rejected(.cancelled) }
 			return Result(matched: true, score: best.score, face: faces[best.index],
-				spoofDecision: decision, matchedPrint: candidate)
+				spoofDecision: deny.decision, matchedPrint: candidate,
+				spoofConfidence: deny.confidence, didRunSpoofClassifier: deny.didRunClassifier)
 		}
 		// The mask path: the full face did not match, so try the upper face alone,
 		// a little harder to pass than the full-face threshold. Only for faces
@@ -126,10 +142,11 @@ package actor UnlockFrameEvaluator {
 			let upperBest = try? upperMatcher.bestMatch(to: upper),
 			upperBest.index < upperFaceIndices.count,
 			upperBest.score >= embedder.matchThreshold + 0.05 {
-			let decision = denyChecked(sample)
+			let deny = denyChecked(sample)
 			guard !Task.isCancelled else { return .rejected(.cancelled) }
 			return Result(matched: true, score: upperBest.score, face: faces[upperFaceIndices[upperBest.index]],
-				spoofDecision: decision, matchedPrint: upper, viaUpperFace: true)
+				spoofDecision: deny.decision, matchedPrint: upper, viaUpperFace: true,
+				spoofConfidence: deny.confidence, didRunSpoofClassifier: deny.didRunClassifier)
 		}
 		guard !Task.isCancelled else { return .rejected(.cancelled) }
 		return Result(matched: false, score: best.score, face: nil, spoofDecision: nil)
@@ -138,32 +155,42 @@ package actor UnlockFrameEvaluator {
 	/// The classifier verdict plus the passive deny cues. The cues run only on frames
 	/// the classifier already calls live, with anti-spoof always on, and can only turn
 	/// a live frame into a spoof rejection — never the reverse.
-	private func denyChecked(_ sample: FaceSample) -> AntiSpoofGate.Decision? {
-		guard let decision = antiSpoof?.evaluate(sample) else { return nil }
-		if case .spoof(_, let score) = decision {
-			classifierSpoofFrames += 1
-			return classifierSpoofFrames >= Self.classifierFireFrames ? decision : .suspect(score: score)
+	private func denyChecked(_ sample: FaceSample) -> (decision: AntiSpoofGate.Decision?, confidence: Float?, didRunClassifier: Bool) {
+		guard let antiSpoof else { return (nil, nil, false) }
+		// Same 2.7x context crop the learned detector sees (224 px, the Spoof
+		// model's input side); render once and share across classifier, bezel, and glare.
+		let side = 224
+		let sharedCrop: CVPixelBuffer?
+		if antiSpoof.isActive && antiSpoof.usesSharedContextCrop224 {
+			sharedCrop = makeContextCrop(sample, side)
+			guard sharedCrop != nil else { return (.unavailable, nil, false) }
+		} else {
+			sharedCrop = nil
 		}
-		guard case .live = decision else { return decision }
+		let (rawDecision, confidence) = antiSpoof.evaluate(sample, contextCrop: sharedCrop)
+		let didRun = antiSpoof.isActive
+		if case .spoof(_, let score) = rawDecision {
+			classifierSpoofFrames += 1
+			let decision: AntiSpoofGate.Decision = classifierSpoofFrames >= Self.classifierFireFrames ? rawDecision : .suspect(score: score)
+			return (decision, confidence, didRun)
+		}
+		guard case .live = rawDecision else { return (rawDecision, confidence, didRun) }
 		// An isolated suspect between live frames decays, so only a cluster of
 		// suspect frames reaches `classifierFireFrames` and rejects.
 		classifierSpoofFrames = max(0, classifierSpoofFrames - 1)
-		// Same 2.7x context crop the learned detector sees (224 px, the Spoof
-		// model's input side); the face box is mapped from the same geometry.
-		let side = 224
-		guard let crop = FaceAligner.contextCrop(sample, side: side),
+		guard let crop = sharedCrop ?? makeContextCrop(sample, side),
 			let faceRect = FaceAligner.contextFaceRect(sample, side: side)
-		else { return decision }
+		else { return (rawDecision, confidence, didRun) }
 		if bezelCue.record(frame: crop, faceRect: faceRect) {
-			return .spoof(
+			return (.spoof(
 				reason: "device-bezel cue fired (face coverage \(bezelCue.level))",
-				score: bezelCue.level)
+				score: bezelCue.level), confidence, didRun)
 		}
 		if glareCue.record(frame: crop, faceRect: faceRect) {
-			return .spoof(
+			return (.spoof(
 				reason: "glare cue fired (level \(glareCue.level))",
-				score: glareCue.level)
+				score: glareCue.level), confidence, didRun)
 		}
-		return decision
+		return (rawDecision, confidence, didRun)
 	}
 }

@@ -57,7 +57,17 @@ package enum IrisLocator {
 		}
 		guard start else { return }
 		Task.detached(priority: .userInitiated) {
-			slot.preload()
+			_ = slot.warmUpOnce { model in
+				var buffer: CVPixelBuffer?
+				guard CVPixelBufferCreate(
+					kCFAllocatorDefault, side, side, kCVPixelFormatType_32BGRA,
+					[kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &buffer
+				) == kCVReturnSuccess,
+					let buffer,
+					let input = try? MLDictionaryFeatureProvider(dictionary: ["eye": MLFeatureValue(pixelBuffer: buffer)])
+				else { return false }
+				return (try? model.prediction(from: input)) != nil
+			}
 			state.withLock { $0.warming = false }
 		}
 	}

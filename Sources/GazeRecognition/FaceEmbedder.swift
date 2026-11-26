@@ -41,14 +41,15 @@ package struct Faceprint: Codable, Sendable, Equatable {
 		}
 		guard !source.isEmpty, source == other.source, !values.isEmpty,
 			values.count == other.values.count else { return 0 }
+		let count = vDSP_Length(values.count)
 		var dot: Float = 0, a: Float = 0, b: Float = 0
-		for i in values.indices {
-			dot += values[i] * other.values[i]
-			a += values[i] * values[i]
-			b += other.values[i] * other.values[i]
-		}
+		vDSP_dotpr(values, 1, other.values, 1, &dot, count)
+		vDSP_svesq(values, 1, &a, count)
+		vDSP_svesq(other.values, 1, &b, count)
 		guard dot.isFinite, a.isFinite, b.isFinite, a > 0, b > 0 else { return 0 }
-		let score = dot / (sqrt(a) * sqrt(b))
+		let denom = sqrt(a) * sqrt(b)
+		guard denom.isFinite, denom > 0 else { return 0 }
+		let score = dot / denom
 		return score.isFinite ? score : 0
 	}
 }
@@ -210,13 +211,23 @@ package struct CoreMLEmbedder: FaceEmbedder, Sendable {
 	/// and low-light validation are still required with the actual bundled weights.
 	package let matchThreshold: Float = 0.45
 
-	private let slot: ModelSlot<MLModel>
+	/// `@unchecked Sendable` for non-Sendable `MLModel`; Core ML predictions are synchronized
+	/// by `PredictionBox.mutex` (or isolated warm-up tensors) via `ModelSlot`.
+	private struct ValidatedModel: @unchecked Sendable {
+		let model: MLModel
+		let inputName: String
+		let outputName: String
+	}
+
+	private let slot: ModelSlot<ValidatedModel>
 	/// Copies of the embedder share one mutex-protected scratch buffer; every fill and
 	/// Core ML prediction executes inside `predictionBox.mutex`.
 	private let predictionBox: PredictionBox
-	private let inputName: String
-	private let outputName: String
 	private let side: Int
+
+	/// Expected side length of the bundled planar [1, 3, S, S] embedding model, validated
+	/// against the loaded `MLModel`'s actual description on first off-main load.
+	package static let expectedSide = 112
 
 	/// Bump whenever the bundled model file changes. It becomes part of the print's
 	/// `source`, and prints with different sources never compare (similarity returns 0).
@@ -226,12 +237,30 @@ package struct CoreMLEmbedder: FaceEmbedder, Sendable {
 
 	package init?() {
 		guard let url = Bundle.main.url(forResource: "FaceEmbedding", withExtension: "mlmodelc") else { return nil }
-		let slot = ModelSlot<MLModel> { try? MLModel(contentsOf: url) }
-		// Validate from this first load; the instance stays resident in the slot.
-		guard let model = slot.withModel({ $0 }) else { return nil }
+		self.init(modelURL: url)
+	}
 
+	/// Defers `MLModel(contentsOf:)` out of synchronous init so MainActor launch never
+	/// stalls compiling weights; schema/shape is validated on first load and fails closed.
+	package init?(modelURL: URL, expectedSide: Int = Self.expectedSide) {
+		guard (16...1024).contains(expectedSide),
+			FileManager.default.fileExists(atPath: modelURL.path),
+			let scratch = TensorScratch(side: expectedSide)
+		else { return nil }
+		self.slot = ModelSlot<ValidatedModel> {
+			Self.loadValidatedModel(at: modelURL, expectedSide: expectedSide)
+		}
+		self.side = expectedSide
+		self.predictionBox = PredictionBox(scratch: scratch)
+		// Version the identifier so swapping models invalidates old enrolments rather
+		// than silently comparing prints from different feature spaces.
+		self.identifier = "coreml:\(expectedSide)x\(expectedSide):\(Self.modelTag)"
+	}
+
+	private static func loadValidatedModel(at url: URL, expectedSide: Int) -> ValidatedModel? {
+		guard let model = try? MLModel(contentsOf: url) else { return nil }
 		// Models in this family take a planar [1, 3, S, S] tensor rather than an image
-		// feature, so accept a multi-array input and read the side length from its shape.
+		// feature, so validate the input/output contract before trusting predictions.
 		let inputs = model.modelDescription.inputDescriptionsByName
 		let outputs = model.modelDescription.outputDescriptionsByName
 		guard
@@ -240,28 +269,23 @@ package struct CoreMLEmbedder: FaceEmbedder, Sendable {
 			constraint.shape.count == 4,
 			constraint.shape[0].intValue == 1, constraint.shape[1].intValue == 3,
 			constraint.shape[2] == constraint.shape[3],
+			constraint.shape[3].intValue == expectedSide,
 			(16...1024).contains(constraint.shape[3].intValue),
 			outputs.count == 1, let output = outputs.values.first,
 			output.multiArrayConstraint != nil
 		else { return nil }
-
-		self.slot = slot
-		self.inputName = input.name
-		self.outputName = output.name
-		self.side = constraint.shape[3].intValue
-		guard let scratch = TensorScratch(side: self.side) else { return nil }
-		self.predictionBox = PredictionBox(scratch: scratch)
-		// Version the identifier so swapping models invalidates old enrolments rather
-		// than silently comparing prints from different feature spaces.
-		self.identifier = "coreml:\(self.side)x\(self.side):\(Self.modelTag)"
+		return ValidatedModel(model: model, inputName: input.name, outputName: output.name)
 	}
 
 	package func warmUp() {
-		slot.preload()
-		guard let tensor = try? MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)], dataType: .float32),
-			let input = try? MLDictionaryFeatureProvider(dictionary: [inputName: MLFeatureValue(multiArray: tensor)])
-		else { return }
-		_ = slot.withModel { try? $0.prediction(from: input) }
+		slot.warmUpOnce { loaded in
+			guard let tensor = try? MLMultiArray(
+					shape: [1, 3, NSNumber(value: side), NSNumber(value: side)], dataType: .float32),
+				let input = try? MLDictionaryFeatureProvider(
+					dictionary: [loaded.inputName: MLFeatureValue(multiArray: tensor)])
+			else { return false }
+			return (try? loaded.model.prediction(from: input)) != nil
+		}
 	}
 
 	package func embed(_ sample: FaceSample) -> Faceprint? {
@@ -302,26 +326,88 @@ package struct CoreMLEmbedder: FaceEmbedder, Sendable {
 	private func predict(_ crop: CVPixelBuffer) -> Faceprint? {
 		// Local reference: the slot lock is released before predicting, so an
 		// unload sweep never waits on a frame (and vice versa beyond a load).
-		guard let model = slot.withModel({ $0 }) else { return nil }
+		guard let loaded = slot.withModel({ $0 }) else { return nil }
 		let values: [Float]? = predictionBox.mutex.withLock { scratch in
 			guard let tensor = self.fillTensor(from: crop, into: scratch),
 				let input = try? MLDictionaryFeatureProvider(
-					dictionary: [self.inputName: MLFeatureValue(multiArray: tensor)]),
-				let output = try? model.prediction(from: input),
-				let array = output.featureValue(for: self.outputName)?.multiArrayValue,
+					dictionary: [loaded.inputName: MLFeatureValue(multiArray: tensor)]),
+				let output = try? loaded.model.prediction(from: input),
+				let array = output.featureValue(for: loaded.outputName)?.multiArrayValue,
 				(1...4096).contains(array.count)
 			else { return nil }
-			var extracted = [Float](repeating: 0, count: array.count)
-			for i in 0..<array.count {
-				extracted[i] = array[i].floatValue
-			}
-			return extracted
+			return Self.extractFloats(from: array)
 		}
 		guard let values else { return nil }
 		// L2-normalise. These embeddings are trained so identity lives in direction, not
 		// magnitude, so normalising makes cosine similarity a plain dot product and keeps
 		// scores comparable across lighting.
 		return Faceprint.normalized(values, source: identifier)
+	}
+
+	/// Extracts `MLMultiArray` elements into `[Float]` via contiguous `.float32`/`.float16`
+	/// buffer reads when row-major contiguous, falling back to subscript indexing for
+	/// non-contiguous strides or other element types.
+	package static func extractFloats(from array: MLMultiArray) -> [Float] {
+		let count = array.count
+		guard count > 0 else { return [] }
+		if isContiguousRowMajor(array) {
+			switch array.dataType {
+			case .float32:
+				var extracted = [Float](repeating: 0, count: count)
+				let ok = array.withUnsafeBytes { raw -> Bool in
+					let byteCount = count * MemoryLayout<Float>.stride
+					guard let src = raw.baseAddress, raw.count >= byteCount else { return false }
+					extracted.withUnsafeMutableBytes { dst in
+						dst.copyMemory(from: UnsafeRawBufferPointer(start: src, count: byteCount))
+					}
+					return true
+				}
+				if ok { return extracted }
+			case .float16:
+				var extracted = [Float](repeating: 0, count: count)
+				let ok = array.withUnsafeBytes { raw -> Bool in
+					let byteCount = count * 2
+					guard let src = raw.baseAddress, raw.count >= byteCount else { return false }
+					return extracted.withUnsafeMutableBytes { dst -> Bool in
+						guard let dstBase = dst.baseAddress else { return false }
+						var srcBuf = vImage_Buffer(
+							data: UnsafeMutableRawPointer(mutating: src),
+							height: 1,
+							width: vImagePixelCount(count),
+							rowBytes: count * 2)
+						var dstBuf = vImage_Buffer(
+							data: dstBase,
+							height: 1,
+							width: vImagePixelCount(count),
+							rowBytes: count * MemoryLayout<Float>.stride)
+						return vImageConvert_Planar16FtoPlanarF(
+							&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags)
+						) == kvImageNoError
+					}
+				}
+				if ok { return extracted }
+			default:
+				break
+			}
+		}
+		var extracted = [Float](repeating: 0, count: count)
+		for i in 0..<count {
+			extracted[i] = array[i].floatValue
+		}
+		return extracted
+	}
+
+	private static func isContiguousRowMajor(_ array: MLMultiArray) -> Bool {
+		let shape = array.shape
+		let strides = array.strides
+		guard shape.count == strides.count, !shape.isEmpty else { return false }
+		var expected = 1
+		for i in shape.indices.reversed() {
+			let dim = shape[i].intValue
+			guard dim > 0, strides[i].intValue == expected else { return false }
+			expected *= dim
+		}
+		return true
 	}
 
 	/// Converts a BGRA crop into the planar RGB tensor the model expects, reusing the

@@ -1,3 +1,4 @@
+import CoreVideo
 import Foundation
 import GazeCamera
 
@@ -27,7 +28,8 @@ package struct AntiSpoofGate: Sendable {
 		case suspect(score: Float)
 	}
 
-	private let spoof: SpoofDetector?
+	private let evaluateConfidence: (@Sendable (FaceSample, CVPixelBuffer?) -> Float?)?
+	package let usesSharedContextCrop224: Bool
 
 	/// How sure the classifier must be it sees a spoof before it rejects.
 	///
@@ -52,19 +54,47 @@ package struct AntiSpoofGate: Sendable {
 	private let spoofRejectThreshold: Float
 
 	package init(spoof: SpoofDetector?, spoofRejectThreshold: Float = Self.defaultSpoofRejectThreshold) {
-		self.spoof = spoof
 		self.spoofRejectThreshold = spoofRejectThreshold
+		if let spoof {
+			self.usesSharedContextCrop224 = !spoof.isDetector && spoof.side == 224
+			self.evaluateConfidence = { sample, contextCrop in
+				if let contextCrop, !spoof.isDetector {
+					return spoof.spoofConfidence(preRenderedCrop: contextCrop)
+				}
+				return spoof.spoofConfidence(sample)
+			}
+		} else {
+			self.usesSharedContextCrop224 = false
+			self.evaluateConfidence = nil
+		}
+	}
+
+	/// Testable initializer allowing synthetic confidence scorers without bundled weights.
+	package init(
+		spoofRejectThreshold: Float = Self.defaultSpoofRejectThreshold,
+		usesSharedContextCrop224: Bool = true,
+		confidence: @escaping @Sendable (FaceSample, CVPixelBuffer?) -> Float?
+	) {
+		self.spoofRejectThreshold = spoofRejectThreshold
+		self.usesSharedContextCrop224 = usesSharedContextCrop224
+		self.evaluateConfidence = confidence
 	}
 
 	/// Whether the detector is available to run. When false the caller skips the gate.
-	package var isActive: Bool { spoof != nil }
+	package var isActive: Bool { evaluateConfidence != nil }
 
 	package func evaluate(_ sample: FaceSample) -> Decision {
-		guard let spoof, let confidence = spoof.spoofConfidence(sample),
-			confidence.isFinite, (0...1).contains(confidence) else { return .unavailable }
+		evaluate(sample, contextCrop: nil).decision
+	}
+
+	package func evaluate(_ sample: FaceSample, contextCrop: CVPixelBuffer?) -> (decision: Decision, confidence: Float?) {
+		guard let evaluateConfidence,
+			let confidence = evaluateConfidence(sample, contextCrop),
+			confidence.isFinite, (0...1).contains(confidence)
+		else { return (.unavailable, nil) }
 		if confidence >= spoofRejectThreshold {
-			return .spoof(reason: "the face looked like a photo or screen", score: confidence)
+			return (.spoof(reason: "the face looked like a photo or screen", score: confidence), confidence)
 		}
-		return .live
+		return (.live, confidence)
 	}
 }

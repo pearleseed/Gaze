@@ -629,7 +629,11 @@ private actor RecognitionTestWorker {
 		var results: [UnlockFrameEvaluator.Result] = []
 		for sample in samples { results.append(await evaluator.evaluate(sample)) }
 		let chosen = results.firstIndex { $0.matched && $0.failure == nil } ?? 0
-		guard !Task.isCancelled, results[chosen].failure == nil else { return (results, chosen, nil) }
-		return (results, chosen, spoof?.spoofConfidence(samples[chosen]))
+		let chosenResult = results[chosen]
+		guard !Task.isCancelled, chosenResult.failure == nil else { return (results, chosen, nil) }
+		let confidence = chosenResult.didRunSpoofClassifier
+			? chosenResult.spoofConfidence
+			: spoof?.spoofConfidence(samples[chosen])
+		return (results, chosen, confidence)
 	}
 }

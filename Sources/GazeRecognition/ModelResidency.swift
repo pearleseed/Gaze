@@ -17,6 +17,8 @@ package final class ModelSlot<Model>: IdleUnloadable, Sendable {
 	private struct State: @unchecked Sendable {
 		var value: Model?
 		var lastUse = Date()
+		var warmed = false
+		var generation: UInt64 = 0
 	}
 
 	private let state: Mutex<State>
@@ -46,8 +48,56 @@ package final class ModelSlot<Model>: IdleUnloadable, Sendable {
 			state.withLock { state in
 				state.value = model
 				state.lastUse = Date()
+				state.warmed = false
+				state.generation &+= 1
 			}
 			return model
+		}
+	}
+
+	/// Loads if needed and runs `body` at most once per residency load cycle.
+	/// Concurrent callers coalesce onto the same load/warm-up; returning `false`
+	/// or a nil model load leaves the slot retryable on the next call.
+	@discardableResult
+	package func warmUpOnce(_ body: (Model) -> Bool) -> Bool {
+		let alreadyWarmed = state.withLock { state -> Bool in
+			guard state.value != nil, state.warmed else { return false }
+			state.lastUse = Date()
+			return true
+		}
+		if alreadyWarmed { return true }
+
+		return loadMutex.withLock { _ in
+			let snapshot = state.withLock { state -> (model: Model?, warmed: Bool, generation: UInt64) in
+				if state.value != nil { state.lastUse = Date() }
+				return (state.value, state.warmed, state.generation)
+			}
+			if snapshot.model != nil, snapshot.warmed {
+				return true
+			}
+			let model: Model
+			let expectedGeneration: UInt64
+			if let existingModel = snapshot.model {
+				model = existingModel
+				expectedGeneration = snapshot.generation
+			} else {
+				guard let loadedModel = load() else { return false }
+				expectedGeneration = state.withLock { state in
+					state.value = loadedModel
+					state.lastUse = Date()
+					state.warmed = false
+					state.generation &+= 1
+					return state.generation
+				}
+				model = loadedModel
+			}
+			guard body(model) else { return false }
+			state.withLock { state in
+				guard state.value != nil, state.generation == expectedGeneration else { return }
+				state.warmed = true
+				state.lastUse = Date()
+			}
+			return true
 		}
 	}
 
@@ -71,7 +121,11 @@ package final class ModelSlot<Model>: IdleUnloadable, Sendable {
 
 	package func unloadIfIdle(for interval: TimeInterval) {
 		state.withLock { state in
-			if Date().timeIntervalSince(state.lastUse) >= interval { state.value = nil }
+			if Date().timeIntervalSince(state.lastUse) >= interval {
+				state.value = nil
+				state.warmed = false
+				state.generation &+= 1
+			}
 		}
 	}
 }

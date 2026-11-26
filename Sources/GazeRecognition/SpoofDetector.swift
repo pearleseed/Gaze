@@ -21,11 +21,11 @@ package struct SpoofDetector: Sendable {
 	package static let shared: SpoofDetector? = SpoofDetector()
 
 	private let slot: ModelSlot<VNCoreMLModel>
-	private let side: Int
+	package let side: Int
 	/// The old Roboflow *object detector* (boxes plus labels, trained on whole frames) read
 	/// as a classifier returned nil on every frame and refused every face. It is no longer
 	/// bundled, but the model kind is still read from its outputs so either can be dropped in.
-	private let isDetector: Bool
+	package let isDetector: Bool
 
 	package init?() {
 		guard
@@ -54,20 +54,34 @@ package struct SpoofDetector: Sendable {
 	/// "Spoof" classification confidence for the face crop, 0…1 (nil when unevaluable).
 	/// Runs one throwaway request so the first matched frame doesn't pay for loading the model.
 	package func warmUp() {
-		slot.preload()
-		guard let model = slot.withModel({ $0 }) else { return }
-		var buffer: CVPixelBuffer?
-		guard CVPixelBufferCreate(kCFAllocatorDefault, side, side, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess,
-			let buffer else { return }
-		let request = VNCoreMLRequest(model: model)
-		request.imageCropAndScaleOption = .scaleFill
-		try? VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+		slot.warmUpOnce { model in
+			var buffer: CVPixelBuffer?
+			guard CVPixelBufferCreate(
+				kCFAllocatorDefault, side, side, kCVPixelFormatType_32BGRA, nil, &buffer
+			) == kCVReturnSuccess,
+				let buffer
+			else { return false }
+			let request = VNCoreMLRequest(model: model)
+			request.imageCropAndScaleOption = .scaleFill
+			do {
+				try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+				return true
+			} catch {
+				return false
+			}
+		}
 	}
 
 	package func spoofConfidence(_ sample: FaceSample) -> Float? {
 		if isDetector { return detectedSpoofConfidence(sample) }
-		guard let model = slot.withModel({ $0 }) else { return nil }
 		guard let crop = FaceAligner.contextCrop(sample, side: side) else { return nil }
+		return spoofConfidence(preRenderedCrop: crop)
+	}
+
+	/// Runs the classifier on a pre-rendered `side`×`side` BGRA context crop when `!isDetector`.
+	package func spoofConfidence(preRenderedCrop crop: CVPixelBuffer) -> Float? {
+		guard !isDetector else { return nil }
+		guard let model = slot.withModel({ $0 }) else { return nil }
 		let request = VNCoreMLRequest(model: model)
 		request.imageCropAndScaleOption = .scaleFill
 		let handler = VNImageRequestHandler(cvPixelBuffer: crop, options: [:])
