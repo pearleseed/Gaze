@@ -78,5 +78,10 @@ let package = Package(
 			dependencies: ["GazeUpdates", "GazeCore"],
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
+		.testTarget(
+			name: "GazeCameraTests",
+			dependencies: ["GazeCamera", "GazeCore"],
+			swiftSettings: [.swiftLanguageMode(.v6)]
+		),
 	]
 )

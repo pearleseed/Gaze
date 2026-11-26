@@ -101,7 +101,7 @@ package final class PresenceWatcher {
 	}
 
 	private func confirmedAbsence(generation expected: UInt64, session: AutofillSessionLease) async -> ContinuousClock.Instant? {
-		let camera = CameraController()
+		let camera = CameraController(accessScope: .foreground, allowsBystanders: true, analysisMode: .presenceOnly)
 		activeCamera = camera
 		let startedAt = ContinuousClock.now
 		let evidenceDeadline = startedAt.advanced(by: Self.startupAllowance)
@@ -109,32 +109,45 @@ package final class PresenceWatcher {
 		var gate = PresenceAbsenceGate(requiredAbsence: Self.seconds(Self.absenceRequired))
 		var verdict = PresenceAbsenceGate.Verdict.needMore
 		var receivedFrame = false
-		// Observe each analyzed frame: a face or analysis failure between timer ticks
-		// must still cancel or invalidate the absence proof.
-		camera.onFrameAnalyzed = { absence, frameID, capturedAt in
+		var pendingSleep: Task<Void, Never>?
+		func wake() {
+			pendingSleep?.cancel()
+		}
+		// Observe each presence-only frame: a face or proven absence immediately wakes
+		// the sleep interval so the camera shuts down without waiting out 800 ms.
+		camera.onPresenceObserved = { observation in
 			guard verdict != .present else { return }
 			receivedFrame = true
-			verdict = gate.update(.init(sample: Self.sampleKind(absence), frameID: frameID,
-				capturedAt: Self.seconds(startedAt.duration(to: capturedAt)),
+			verdict = gate.update(.init(sample: Self.sampleKind(observation.verdict), frameID: observation.frameID,
+				capturedAt: Self.seconds(startedAt.duration(to: observation.capturedAt)),
 				observedAt: Self.seconds(startedAt.duration(to: .now))))
+			if verdict == .present || verdict == .absent {
+				wake()
+			}
 		}
-		session.onInvalidation = { [weak camera] in camera?.stop() }
+		session.onInvalidation = { [weak camera] in
+			camera?.stop()
+			wake()
+		}
 		var startupFinished = false
 		let pinnedCamera = Preferences.shared.requireBuiltInCamera ? store.pinnedCameraID : nil
 		let startup = Task {
 			await camera.start(pinnedDeviceID: pinnedCamera)
 			startupFinished = true
+			if camera.state != .running { wake() }
 		}
 		defer {
+			pendingSleep?.cancel()
 			startup.cancel()
 			session.onInvalidation = nil
-			camera.onFrameAnalyzed = nil
+			camera.onPresenceObserved = nil
 			camera.stop()
 			if activeCamera === camera { activeCamera = nil }
 		}
 
 		while ContinuousClock.now < deadline {
-			guard decision(generation: expected, session: session, absenceProven: true).allowsLock else { return nil }
+			guard !Task.isCancelled,
+				decision(generation: expected, session: session, absenceProven: true).allowsLock else { return nil }
 			if startupFinished && camera.state != .running { return nil }
 			if verdict == .present { return nil }
 			if verdict == .absent {
@@ -144,20 +157,30 @@ package final class PresenceWatcher {
 				return capturedAt <= now && capturedAt.duration(to: now) <= CameraFrameLease.maximumAge ? capturedAt : nil
 			}
 			if !receivedFrame && ContinuousClock.now >= evidenceDeadline { return nil }
-			do { try await Task.sleep(for: Self.sampleInterval) }
-			catch { return nil }
+			let nextCheckpoint = receivedFrame ? deadline : min(evidenceDeadline, deadline)
+			let remaining = ContinuousClock.now.duration(to: nextCheckpoint)
+			guard remaining > .zero else { continue }
+			let sleepTask = Task { @MainActor in
+				_ = try? await Task.sleep(for: min(Self.sampleInterval, remaining))
+			}
+			pendingSleep = sleepTask
+			await withTaskCancellationHandler {
+				await sleepTask.value
+			} onCancel: {
+				sleepTask.cancel()
+			}
+			pendingSleep = nil
 		}
 		return nil
 	}
 
-	private static func sampleKind(_ absence: FaceAbsence?) -> PresenceAbsenceGate.Sample {
-		switch absence {
-		case .none, .multipleFaces, .analysisFailed:
-			// analysisFailed means the face detector succeeded but landmarks did not.
+	private static func sampleKind(_ verdict: PresenceObservation.Verdict) -> PresenceAbsenceGate.Sample {
+		switch verdict {
+		case .facePresent:
 			return .facePresent
 		case .noFace:
 			return .noFace
-		case .detectionFailed:
+		case .indeterminate:
 			return .indeterminate
 		}
 	}

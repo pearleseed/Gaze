@@ -15,11 +15,18 @@ package struct CameraEvidenceContinuity: Sendable {
 	}
 
 	@discardableResult
-	package mutating func record(usable: Bool, capturedAt: ContinuousClock.Instant) -> Bool {
+	package mutating func record(
+		usable: Bool,
+		capturedAt: ContinuousClock.Instant,
+		droppedBefore: Int = 0
+	) -> Bool {
 		if let previous = self.capturedAt, capturedAt <= previous {
 			revision &+= 1
 			self.usable = false
 			return false
+		}
+		if droppedBefore > 0 {
+			invalidate()
 		}
 		if !usable || self.capturedAt.map({ $0.duration(to: capturedAt) > Self.maximumGap }) == true {
 			revision &+= 1
