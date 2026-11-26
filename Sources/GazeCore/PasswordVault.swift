@@ -1,0 +1,83 @@
+import Foundation
+import OpenDirectory
+import os
+
+/// Stores the account password for the keystroke unlock backend.
+///
+package enum PasswordVault {
+
+	private static let account = "account-password"
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "PasswordVault")
+
+	private struct Record: Codable {
+		var password: String
+	}
+
+	package static var hasPassword: Bool {
+		(try? Keychain.exists(account)) ?? false
+	}
+
+	/// Set when the saved password stopped matching the account (changed elsewhere).
+	/// Gaze stops typing it until a new one is saved: a wrong password typed at every
+	/// lock only spends the user's failed-login attempts.
+	private static let staleKey = "storedPasswordStale"
+	package static var isStale: Bool {
+		get { UserDefaults.standard.bool(forKey: staleKey) }
+		set { UserDefaults.standard.set(newValue, forKey: staleKey) }
+	}
+
+	package static func containsPassword() throws -> Bool {
+		try Keychain.exists(account)
+	}
+
+	/// Checks the password against the local directory before storing it, so a typo
+	/// isn't discovered at the lock screen where it cannot be fixed.
+	@discardableResult
+	package static func store(_ password: String, forUser user: String = NSUserName()) throws -> Bool {
+		guard verify(password, user: user) else { return false }
+		try SecureVault.store(Record(password: password), as: account)
+		isStale = false
+		logger.notice("Stored account password for keystroke unlock.")
+		return true
+	}
+
+	package static func password() throws -> String? {
+		try SecureVault.load(Record.self, from: account)?.password
+	}
+
+	package static func remove() throws {
+		try SecureVault.remove(account)
+	}
+
+	/// Checks a password against the local directory, without unlocking anything.
+	///
+	/// This used to shell out to `dscl . -authonly <user> <password>`, which put the
+	/// password in the argument vector of a subprocess — and `argv` is readable from the
+	/// process list by anything else running as this user for as long as the call takes.
+	/// The window was short and the audience was limited to your own uid, but it meant the
+	/// one moment the app handles a plaintext password was also the one moment it published
+	/// it, which is not a trade worth making for a check the system exposes directly.
+	///
+	/// `ODRecord.verifyPassword` is the API `dscl` itself is a wrapper around. It stays
+	/// in-process, avoiding a subprocess argument containing the password.
+	package static func verify(_ password: String, user: String = NSUserName()) -> Bool {
+		do {
+			let node = try ODNode(
+				session: ODSession.default(), type: ODNodeType(kODNodeTypeAuthentication))
+			let record = try node.record(
+				withRecordType: kODRecordTypeUsers, name: user, attributes: nil)
+			try record.verifyPassword(password)
+			return true
+		} catch let error as NSError {
+			// A wrong password and a broken lookup both land here, so tell them apart in the
+			// log — "the password was wrong" and "we could not ask" need different fixes,
+			// and conflating them is how a directory problem gets misread as a typo.
+			if error.domain == "com.apple.OpenDirectory" && error.code == 5000 {
+				logger.notice("Password did not verify against the local directory.")
+			} else {
+				logger.error("Could not verify password: \(error.localizedDescription)")
+			}
+			return false
+		}
+	}
+}

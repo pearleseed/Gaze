@@ -1,0 +1,118 @@
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+package final class LockScanDiagnostics {
+	package static let shared = LockScanDiagnostics()
+
+	package enum Outcome: CaseIterable, Sendable {
+		case starting, scanning, movement, manualInput, cameraUnavailable, firstFrameTimeout, cameraStalled
+		case verificationUnavailable, notRecognized, challengeExpired, spoofRejected, ended, scanOnlyPassed
+		case submissionStopped, submissionPending, submissionUnconfirmed, unlocked, cancelled
+
+		package var isScanning: Bool { self == .starting || self == .scanning || self == .movement }
+
+		package var message: String {
+			switch self {
+			case .starting: "Waiting for the camera's first fresh frame."
+			case .scanning: "Looking for your enrolled face."
+			case .movement: "Follow the blob, then return to your starting position."
+			case .manualInput: "Gaze stopped when keyboard or mouse input was detected. Use your password or Touch ID for this lock."
+			case .cameraUnavailable: "The enrolled camera could not start. Unlock manually, then check Test Recognition."
+			case .firstFrameTimeout: "The camera did not deliver a fresh frame in time. No password was sent. Unlock manually, then check Test Recognition."
+			case .cameraStalled: "The camera stopped delivering fresh frames. No password was sent. Use your password or Touch ID."
+			case .verificationUnavailable: "A required verification check was unavailable. No password was sent. Use your password or Touch ID."
+			case .notRecognized: "Face verification or a movement did not complete. No password was sent. Face the camera and return to rest between movements."
+			case .challengeExpired: "The movement was not answered in time. No password was sent. Watch for the prompt and follow it before it times out."
+			case .spoofRejected: "The anti-spoof check rejected the attempt. No password was sent. Use your password or Touch ID."
+			case .ended: "The scan ended without complete verification. No password was sent. Try Test Recognition to check framing and movement."
+			case .scanOnlyPassed: "Recognition and the selected movement checks passed in scan-only mode. That mode does not enter a password or unlock your Mac."
+			case .submissionStopped: "Password delivery stopped before Gaze could confirm an unlock. It will not retry during this lock. Use your password or Touch ID."
+			case .submissionPending: "Password input was sent; waiting for macOS to confirm that the screen unlocked."
+			case .submissionUnconfirmed: "macOS did not confirm an unlock after password input. Gaze will not retry during this lock. Use your password or Touch ID."
+			case .unlocked: "macOS reported that the screen unlocked after Gaze sent password input."
+			case .cancelled: "The scan was cancelled or the Mac was unlocked another way."
+			}
+		}
+	}
+
+	private var attemptID: UUID?
+	package private(set) var outcome: Outcome?
+	package private(set) var movementFailure: MovementFailure?
+	package var summary: String {
+		let outcomeMessage = outcome?.message ?? "No lock-screen attempt in this app session."
+		guard let movementFailure else { return outcomeMessage }
+		return outcomeMessage + "\n\n" + movementFailure.message
+	}
+
+	package struct MovementFailure: Sendable {
+		package let action: String
+		package let returning: Bool
+		package let comparedIdentity: Bool
+		package let score: Float
+		package let threshold: Float
+		package let poseOffset: Double?
+		package let poseTarget: Double?
+		package let returnTolerance: Double?
+
+		package init(
+			action: String,
+			returning: Bool,
+			comparedIdentity: Bool,
+			score: Float,
+			threshold: Float,
+			poseOffset: Double?,
+			poseTarget: Double?,
+			returnTolerance: Double?
+		) {
+			self.action = action
+			self.returning = returning
+			self.comparedIdentity = comparedIdentity
+			self.score = score
+			self.threshold = threshold
+			self.poseOffset = poseOffset
+			self.poseTarget = poseTarget
+			self.returnTolerance = returnTolerance
+		}
+
+		package var message: String {
+			let phase = returning ? "returning to the starting pose" : "making the requested movement"
+			let comparison = comparedIdentity
+				? String(format: "Face match %.3f was below %.2f.", score, threshold)
+				: "The face comparison could not complete."
+			var text = "Last movement stopped: \(action), while \(phase). \(comparison)"
+			if let poseOffset, let poseTarget, let returnTolerance {
+				text += String(format: " Movement from start: %+.2f rad; requested: %+.2f rad; return range: ±%.2f rad.",
+					poseOffset, poseTarget, returnTolerance)
+			}
+			return text
+		}
+	}
+
+	package func begin(_ identifier: UUID) {
+		attemptID = identifier
+		outcome = .starting
+		movementFailure = nil
+	}
+
+	package func recordMovementFailure(_ failure: MovementFailure, for identifier: UUID) {
+		guard attemptID == identifier else { return }
+		movementFailure = failure
+	}
+
+	package func record(_ outcome: Outcome, for identifier: UUID) {
+		guard attemptID == identifier else { return }
+		self.outcome = outcome
+	}
+
+	package func finishScanning(for identifier: UUID) {
+		guard outcome?.isScanning == true else { return }
+		record(.cancelled, for: identifier)
+	}
+
+	package func cancel(for identifier: UUID) {
+		guard outcome?.isScanning == true || outcome == .submissionPending else { return }
+		record(.cancelled, for: identifier)
+	}
+}

@@ -1,0 +1,219 @@
+import SwiftUI
+
+/// Coordinates offscreen snapshot rendering (e.g. `LockPanelPreview`), where Metal layers
+/// cannot be captured so `GazeCompanionView` switches to its 2D fallback path.
+@MainActor
+package enum GazeCompanionSnapshotState {
+	package static var isRendering = false
+}
+
+private struct NotchReduceMotionKey: EnvironmentKey {
+	static let defaultValue = false
+}
+
+extension EnvironmentValues {
+	package var notchReduceMotion: Bool {
+		get { self[NotchReduceMotionKey.self] }
+		set { self[NotchReduceMotionKey.self] = newValue }
+	}
+}
+
+package enum GazeFaceMotion: Equatable, Sendable {
+	case resting, scanning, turnLeft, turnRight, nod, blink, openMouth, returnToCenter, accepted, rejected
+
+	package var isOneShot: Bool { self == .accepted || self == .rejected }
+
+	package var stillPose: GazeFacePose {
+		var pose = GazeFacePose()
+		pose.expression = self == .accepted ? 1 : (self == .rejected ? -1 : 0)
+		return pose
+	}
+
+	package var demonstratesAction: Bool {
+		switch self {
+		case .turnLeft, .turnRight, .nod, .blink, .openMouth: true
+		default: false
+		}
+	}
+
+	package func pose(at elapsed: TimeInterval) -> GazeFacePose {
+		GazeCompanionPresentation.notch.pose(for: self, at: elapsed).face
+	}
+
+	package static func eased(_ value: Double) -> Double {
+		let fraction = min(1, max(0, value))
+		return fraction * fraction * fraction * (fraction * (fraction * 6 - 15) + 10)
+	}
+
+}
+
+package struct GazeFacePose: Equatable, Sendable {
+	package var turn = 0.0
+	package var nod = 0.0
+	package var eyesOpen = 1.0
+	package var mouthOpen = 0.0
+	package var breath = 0.0
+	package var gaze = 0.0
+	package var expression = 0.0
+
+	package init(turn: Double = 0.0, nod: Double = 0.0, eyesOpen: Double = 1.0,
+		mouthOpen: Double = 0.0, breath: Double = 0.0, gaze: Double = 0.0, expression: Double = 0.0) {
+		self.turn = turn
+		self.nod = nod
+		self.eyesOpen = eyesOpen
+		self.mouthOpen = mouthOpen
+		self.breath = breath
+		self.gaze = gaze
+		self.expression = expression
+	}
+
+	package func blended(to target: Self, progress: Double) -> Self {
+		func blend(_ start: Double, _ end: Double) -> Double { start + (end - start) * progress }
+		return Self(turn: blend(turn, target.turn), nod: blend(nod, target.nod),
+			eyesOpen: blend(eyesOpen, target.eyesOpen), mouthOpen: blend(mouthOpen, target.mouthOpen),
+			breath: blend(breath, target.breath), gaze: blend(gaze, target.gaze), expression: blend(expression, target.expression))
+	}
+}
+
+package struct GazeFacePlayback: Sendable {
+	package private(set) var motion: GazeFaceMotion
+	private var startedAt: TimeInterval
+	private var origin: GazeFacePose?
+
+	package init(motion: GazeFaceMotion, at time: TimeInterval) {
+		self.motion = motion
+		startedAt = time
+	}
+
+	package func pose(at time: TimeInterval) -> GazeFacePose {
+		let elapsed = max(0, time - startedAt)
+		let target = motion.pose(at: elapsed)
+		guard let origin, elapsed < 0.14 else { return target }
+		return origin.blended(to: target, progress: GazeFaceMotion.eased(elapsed / 0.14))
+	}
+
+	package mutating func retarget(to motion: GazeFaceMotion, at time: TimeInterval) {
+		origin = pose(at: time)
+		self.motion = motion
+		startedAt = time
+	}
+}
+
+package struct GazeFaceDrawing: View {
+	package let pose: GazeFacePose
+	package let motion: GazeFaceMotion
+	package var material: GazeCompanionMaterial
+	package var bodyOpacity: Double
+
+	package init(pose: GazeFacePose, motion: GazeFaceMotion,
+		material: GazeCompanionMaterial = .charcoal, bodyOpacity: Double = 1.0) {
+		self.pose = pose
+		self.motion = motion
+		self.material = material
+		self.bodyOpacity = bodyOpacity
+	}
+	private var featureColor: Color {
+		material == .pearl ? Color(white: 0.10) : .white
+	}
+	private var successMarkOpacity: Double { min(1, max(0, pose.expression)) }
+	private var failDim: Double { min(1, max(0, -pose.expression)) }
+	private var resolvedBodyOpacity: Double { bodyOpacity * (1 - 0.45 * failDim) }
+
+	package var body: some View {
+		GeometryReader { geometry in
+			let side = min(geometry.size.width, geometry.size.height)
+			let shell = RoundedRectangle(cornerRadius: side * 0.36, style: .continuous)
+			ZStack {
+				shell
+					.fill(LinearGradient(colors:
+						[Color(white: 0.06), Color(white: 0.03), Color(white: 0.05)],
+						startPoint: .topLeading, endPoint: .bottomTrailing))
+					.padding(side * 0.045)
+					.opacity(resolvedBodyOpacity)
+				shell
+					.strokeBorder(featureColor.opacity(0.55), lineWidth: max(0.5, side * 0.015))
+					.padding(side * 0.045)
+				Ellipse()
+					.fill(featureColor.opacity(0.20))
+					.frame(width: side * 0.23, height: side * 0.06)
+					.blur(radius: side * 0.035)
+					.rotationEffect(.degrees(-35))
+					.offset(x: -side * 0.27, y: -side * 0.31)
+				HStack(spacing: side * 0.15) {
+					eye(side: side, trailing: false)
+					eye(side: side, trailing: true)
+				}
+				.offset(x: side * 0.10 * (pose.turn + pose.gaze), y: side * (0.09 + pose.nod * 0.045 - pose.mouthOpen * 0.09))
+				.opacity(1 - successMarkOpacity * 0.6)
+				GazeExpressionCurve(curvature: pose.expression)
+					.stroke(featureColor, style: StrokeStyle(lineWidth: side * (pose.expression > 0 ? 0.044 : 0.032), lineCap: .round))
+					.frame(width: side * 0.23, height: side * 0.15)
+					.opacity(abs(pose.expression) * (1 - successMarkOpacity))
+					.offset(x: side * 0.10 * pose.turn, y: side * (0.27 + max(0, pose.expression) * 0.035))
+				Capsule()
+					.fill(featureColor)
+					.frame(width: side * 0.16, height: side * 0.19)
+					.scaleEffect(x: 0.5 + pose.mouthOpen * 0.5, y: max(0.01, pose.mouthOpen))
+					.opacity(pose.mouthOpen * (1 - successMarkOpacity))
+					.offset(y: side * 0.27)
+				// Success end-state: green checkmark in circle, held.
+				ZStack {
+					Circle()
+						.strokeBorder(featureColor, lineWidth: side * 0.045)
+					GazeCheckmark()
+						.stroke(featureColor, style: StrokeStyle(lineWidth: side * 0.05, lineCap: .round, lineJoin: .round))
+						.padding(side * 0.26)
+				}
+				.frame(width: side * 0.62, height: side * 0.62)
+				.opacity(successMarkOpacity)
+			}
+			.frame(width: side, height: side)
+			.scaleEffect(1 + pose.breath * 0.014)
+			.rotation3DEffect(.degrees(pose.turn * 28), axis: (x: 0, y: 1, z: 0), perspective: 0.32)
+			.rotation3DEffect(.degrees(pose.nod * 22), axis: (x: 1, y: 0, z: 0), perspective: 0.32)
+			.rotationEffect(.degrees(-3 + pose.turn * 2 + min(0, pose.expression) * 3))
+			.offset(x: side * pose.turn * 0.04, y: side * pose.nod * 0.025)
+			.frame(width: geometry.size.width, height: geometry.size.height)
+		}
+	}
+
+	private func eye(side: CGFloat, trailing: Bool) -> some View {
+		let sadness = max(0, -pose.expression)
+		let eyeHeight = CGFloat(pose.eyesOpen * (1 - sadness * 0.26))
+		let angle = Angle.degrees(sadness * (trailing ? -18.0 : 18.0))
+		return Capsule()
+			.fill(featureColor.opacity(0.96))
+			.frame(width: side * 0.125, height: side * 0.25)
+			.scaleEffect(y: eyeHeight)
+			.rotationEffect(angle)
+			.frame(width: side * 0.125, height: side * 0.25)
+			.shadow(color: featureColor.opacity(0.18), radius: side * 0.035)
+	}
+}
+
+private struct GazeCheckmark: Shape {
+	func path(in rect: CGRect) -> Path {
+		var path = Path()
+		path.move(to: CGPoint(x: rect.minX + rect.width * 0.24, y: rect.midY + rect.height * 0.02))
+		path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.45, y: rect.maxY - rect.height * 0.24))
+		path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.22, y: rect.minY + rect.height * 0.26))
+		return path
+	}
+}
+
+private struct GazeExpressionCurve: Shape {
+	var curvature: Double
+	var animatableData: Double {
+		get { curvature }
+		set { curvature = newValue }
+	}
+
+	func path(in rect: CGRect) -> Path {
+		var path = Path()
+		let edgeHeight = rect.midY - curvature * rect.height * 0.24
+		path.move(to: CGPoint(x: rect.minX, y: edgeHeight))
+		path.addQuadCurve(to: CGPoint(x: rect.maxX, y: edgeHeight),
+			control: CGPoint(x: rect.midX, y: rect.midY + curvature * rect.height * 0.72))
+		return path
+	}
+}

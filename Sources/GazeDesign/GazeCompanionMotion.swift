@@ -1,0 +1,170 @@
+import Foundation
+
+package enum GazeCompanionMaterial: Equatable, Sendable {
+	case charcoal, pearl, ink
+}
+
+package enum GazeCompanionPresentation: Equatable, Sendable {
+	case standard, notch
+
+	package func sampleTime(_ elapsed: Double, motion: GazeFaceMotion) -> Double {
+		guard self == .notch else { return elapsed }
+		if motion == .accepted { return elapsed * (1.4 / 0.44) }
+		if motion == .rejected { return elapsed * (1.85 / 0.80) }
+		return elapsed
+	}
+
+	package func duration(for motion: GazeFaceMotion) -> Double? {
+		if motion == .accepted { return self == .notch ? 0.44 : 1.4 }
+		if motion == .rejected { return self == .notch ? 0.80 : 1.85 }
+		return nil
+	}
+
+	package func pose(for motion: GazeFaceMotion, at elapsed: Double, reducedMotion: Bool = false) -> GazeCompanionPose {
+		var pose = GazeCompanionMotion.pose(for: motion, at: sampleTime(elapsed, motion: motion), reducedMotion: reducedMotion)
+		if self == .notch, motion.isOneShot, !reducedMotion {
+			pose.face.expression = (motion == .accepted ? 1 : -1) * GazeCompanionTiming.ease(max(0, elapsed) / 0.14)
+		}
+		return pose
+	}
+}
+
+package struct GazeCompanionPlayback: Sendable {
+	package private(set) var motion: GazeFaceMotion
+	package private(set) var startedAt: Double
+	package let presentation: GazeCompanionPresentation
+	private var origin: GazeCompanionPose?
+
+	package init(motion: GazeFaceMotion, at time: Double, presentation: GazeCompanionPresentation = .standard) {
+		self.motion = motion
+		startedAt = time
+		self.presentation = presentation
+	}
+
+	package func pose(at time: Double, reducedMotion: Bool = false) -> GazeCompanionPose {
+		let elapsed = max(0, time - startedAt)
+		let target = presentation.pose(for: motion, at: elapsed, reducedMotion: reducedMotion)
+		let blendDuration = presentation == .notch && motion.isOneShot ? 0.12 : 0.24
+		guard !reducedMotion, let origin, elapsed < blendDuration else { return target }
+		return origin.blended(to: target, progress: GazeCompanionTiming.settle(elapsed / blendDuration))
+	}
+
+	package mutating func retarget(to motion: GazeFaceMotion, at time: Double) {
+		origin = pose(at: time)
+		self.motion = motion
+		startedAt = time
+	}
+}
+
+package struct GazeCompanionPose: Equatable, Sendable {
+	package var face = GazeFacePose()
+	package var roll = 0.0
+	package var stretch = 0.0
+	package var lift = 0.0
+	package var drift = 0.0
+
+	package init(face: GazeFacePose = GazeFacePose(), roll: Double = 0.0,
+		stretch: Double = 0.0, lift: Double = 0.0, drift: Double = 0.0) {
+		self.face = face
+		self.roll = roll
+		self.stretch = stretch
+		self.lift = lift
+		self.drift = drift
+	}
+
+	package func blended(to target: Self, progress: Double) -> Self {
+		Self(face: face.blended(to: target.face, progress: progress),
+			roll: roll + (target.roll - roll) * progress,
+			stretch: stretch + (target.stretch - stretch) * progress,
+			lift: lift + (target.lift - lift) * progress,
+			drift: drift + (target.drift - drift) * progress)
+	}
+}
+
+package enum GazeCompanionTiming {
+	package static func idleGlance(_ amount: Double) -> GazeCompanionPose {
+		var pose = GazeCompanionPose()
+		pose.face.turn = amount * 0.32
+		pose.drift = amount * 0.12
+		pose.lift = -0.06 * amount * amount
+		return pose
+	}
+
+	package static func ease(_ value: Double) -> Double { min(1, max(0, GazeFaceMotion.eased(value))) }
+	package static func settle(_ value: Double) -> Double { 1 - pow(1 - min(1, max(0, value)), 5) }
+	package static func pulse(_ time: Double, _ start: Double, _ peak: Double, _ hold: Double, _ end: Double) -> Double {
+		ease((time - start) / (peak - start)) * (1 - ease((time - hold) / (end - hold)))
+	}
+	package static func guidance(_ motion: GazeFaceMotion, at time: Double) -> GazeCompanionPose {
+		let time = time.truncatingRemainder(dividingBy: 3.2)
+		let movement = pulse(time, 0.28, 1.05, 1.65, 2.55)
+		var pose = GazeCompanionPose()
+		switch motion {
+		case .turnLeft: pose.face.turn = -0.74 * movement
+		case .turnRight: pose.face.turn = 0.74 * movement
+		case .nod: pose.face.nod = 0.78 * pulse(time, 0.28, 0.82, 1.04, 1.90)
+		case .blink: pose.face.eyesOpen = 1 - 0.96 * pulse(time, 0.70, 0.85, 1.05, 1.30)
+		case .openMouth: pose.face.mouthOpen = movement
+		case .scanning:
+			// Idle scan: slow left-right sway returning to center on the same
+			// 3.2s guidance clock, with blink and mouth pulses riding along.
+			// Calm amplitude: well under the full-turn demo peak so it reads
+			// as watching, not prompting.
+			pose.face.turn = 0.38 * sin(time * .pi * 2 / 3.2)
+			pose.face.nod = 0.06 * sin(time * .pi * 2 / 3.2 + .pi / 2)
+			pose.face.eyesOpen = 1 - 0.96 * pulse(time, 0.70, 0.85, 1.05, 1.30)
+			pose.face.mouthOpen = 0.35 * pulse(time, 1.65, 1.95, 2.25, 2.75)
+			pose.face.gaze = 0.30 * sin(time * .pi * 2 / 3.2)
+			pose.drift = 0.08 * sin(time * .pi * 2 / 3.2)
+		default: break
+		}
+		return pose
+	}
+}
+
+package enum GazeCompanionMotion {
+	package static func pose(for motion: GazeFaceMotion, at elapsed: Double, reducedMotion: Bool = false) -> GazeCompanionPose {
+		if motion == .returnToCenter { return GazeCompanionPose() }
+		if reducedMotion { return GazeCompanionPose(face: motion.stillPose) }
+		let time = max(0, elapsed)
+		var pose = GazeCompanionPose()
+		if motion.demonstratesAction {
+			pose = GazeCompanionTiming.guidance(motion, at: time)
+			// Demo prompts look toward the cued side.
+			let time = time.truncatingRemainder(dividingBy: 3.2)
+			let direction = motion == .turnLeft ? -1.0 : (motion == .turnRight ? 1.0 : 0.0)
+			pose.face.gaze = direction * 0.42 * GazeCompanionTiming.pulse(time, 0.03, 0.25, 0.55, 1.05)
+			return pose
+		}
+		switch motion {
+		case .accepted:
+			// Face (0-0.10) to ring (squeeze) to spinning globe to checkmark held.
+			// Staged on the standard 1.4s clock; the notch presentation samples
+			// this into its accepted 0.44s duration.
+			pose.face.expression = GazeCompanionTiming.settle(max(0, (time - 0.84) / 0.45))
+			pose.face.nod = 0.46 * GazeCompanionTiming.pulse(time, 0.10, 0.48, 0.62, 1.18)
+			pose.stretch = -0.065 * GazeCompanionTiming.pulse(time, 0, 0.26, 0.32, 0.64)
+				+ 0.035 * GazeCompanionTiming.pulse(time, 0.42, 0.76, 0.84, 1.40)
+			pose.lift = -0.025 * GazeCompanionTiming.pulse(time, 0.35, 0.72, 0.82, 1.40)
+			// Globe sweep through the middle third: a gentle turn and back,
+			// settling to center. Kept slow on purpose: the notch samples
+			// this clock 3.18x, and the suite caps per-frame turn steps.
+			pose.face.turn = 0.40 * sin((time - 0.30) * .pi * 2 / 1.35) * GazeCompanionTiming.pulse(time, 0.30, 0.48, 0.72, 1.00)
+			pose.drift = 0.10 * sin((time - 0.30) * .pi * 2 / 1.35) * GazeCompanionTiming.pulse(time, 0.30, 0.48, 0.72, 1.00)
+		case .rejected:
+			// Face to ring to globe to dimmed face held (standard 1.85s clock;
+			// notch samples into rejected 0.80s).
+			pose.face.expression = -GazeCompanionTiming.settle(max(0, (time - 1.05) / 0.45))
+			pose.face.turn = 0.30 * sin(time * .pi * 2 / 0.90) * GazeCompanionTiming.pulse(time, 0.05, 0.28, 0.90, 1.65)
+				+ 0.30 * sin((time - 0.55) * .pi * 2 / 1.20) * GazeCompanionTiming.pulse(time, 0.55, 0.75, 1.00, 1.30)
+			pose.roll = -4 * sin(time * .pi * 2 / 0.90) * GazeCompanionTiming.pulse(time, 0.10, 0.35, 0.90, 1.80)
+			pose.stretch = -0.065 * GazeCompanionTiming.pulse(time, 0.10, 0.44, 0.80, 1.85)
+			pose.drift = 0.10 * sin((time - 0.55) * .pi * 2 / 1.20) * GazeCompanionTiming.pulse(time, 0.55, 0.75, 1.00, 1.30)
+		default:
+			let time = time.truncatingRemainder(dividingBy: 8)
+			pose = GazeCompanionTiming.idleGlance(0.45 * GazeCompanionTiming.pulse(time, 0.6, 1.45, 2.1, 3.0)
+				- 0.38 * GazeCompanionTiming.pulse(time, 4.25, 5.1, 5.8, 7.0))
+		}
+		return pose
+	}
+}

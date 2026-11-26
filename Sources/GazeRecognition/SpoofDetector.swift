@@ -1,0 +1,99 @@
+import CoreML
+import CoreVideo
+import Foundation
+import GazeCamera
+import Vision
+
+/// Face-crop classification anti-spoof.
+///
+/// Runs the live/spoof classifier (`Tools/Scripts/train-spoof-classifier.swift`) on the face crop and
+/// reports how confidently it sees a *spoof* — a held phone, a screen, a printed photo.
+/// From that dataset, class `"1"` is a spoof and `"0"` is a live face.
+///
+/// The classifier uses `contextCrop` to keep nearby signals such as a screen bezel or
+/// paper border in frame and limit the influence of background clutter.
+package struct SpoofDetector: Sendable {
+
+	/// The dataset's spoof class. `"0"` is a live face.
+	package static let spoofLabel = "1"
+
+	/// Shared instance: loading the model is expensive and was previously done per scan.
+	package static let shared: SpoofDetector? = SpoofDetector()
+
+	private let slot: ModelSlot<VNCoreMLModel>
+	private let side: Int
+	/// The old Roboflow *object detector* (boxes plus labels, trained on whole frames) read
+	/// as a classifier returned nil on every frame and refused every face. It is no longer
+	/// bundled, but the model kind is still read from its outputs so either can be dropped in.
+	private let isDetector: Bool
+
+	package init?() {
+		guard
+			let url = Bundle.main.url(forResource: "Spoof", withExtension: "mlmodelc"),
+			let ml = try? MLModel(contentsOf: url),
+			let vn = try? VNCoreMLModel(for: ml)
+		else { return nil }
+		self.slot = ModelSlot(
+			load: {
+				guard let ml = try? MLModel(contentsOf: url),
+					let vn = try? VNCoreMLModel(for: ml)
+				else { return nil }
+				return vn
+			},
+			initial: vn)
+		self.side = ml.modelDescription.inputDescriptionsByName.values.first(where: {
+			$0.type == .image
+		})?.imageConstraint?.pixelsWide ?? 224
+		self.isDetector = ml.modelDescription.outputDescriptionsByName["coordinates"] != nil
+	}
+
+	package static var isAvailable: Bool {
+		Bundle.main.url(forResource: "Spoof", withExtension: "mlmodelc") != nil
+	}
+
+	/// "Spoof" classification confidence for the face crop, 0…1 (nil when unevaluable).
+	/// Runs one throwaway request so the first matched frame doesn't pay for loading the model.
+	package func warmUp() {
+		slot.preload()
+		guard let model = slot.withModel({ $0 }) else { return }
+		var buffer: CVPixelBuffer?
+		guard CVPixelBufferCreate(kCFAllocatorDefault, side, side, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess,
+			let buffer else { return }
+		let request = VNCoreMLRequest(model: model)
+		request.imageCropAndScaleOption = .scaleFill
+		try? VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+	}
+
+	package func spoofConfidence(_ sample: FaceSample) -> Float? {
+		if isDetector { return detectedSpoofConfidence(sample) }
+		guard let model = slot.withModel({ $0 }) else { return nil }
+		guard let crop = FaceAligner.contextCrop(sample, side: side) else { return nil }
+		let request = VNCoreMLRequest(model: model)
+		request.imageCropAndScaleOption = .scaleFill
+		let handler = VNImageRequestHandler(cvPixelBuffer: crop, options: [:])
+		do { try handler.perform([request]) } catch { return nil }
+		guard let classes = request.results as? [VNClassificationObservation] else { return nil }
+		guard let spoof = classes.first(where: { $0.identifier == Self.spoofLabel }) else { return nil }
+		guard spoof.confidence.isFinite, (0...1).contains(spoof.confidence) else { return nil }
+		return spoof.confidence
+	}
+
+	/// Strongest "spoof" detection in the whole frame, 0…1 (0 when nothing spoof-like is
+	/// seen). Full frame because that is what the detector was trained and measured on
+	/// (see `AntiSpoofGate.spoofRejectThreshold`), and the tell usually sits outside the face.
+	private func detectedSpoofConfidence(_ sample: FaceSample) -> Float? {
+		guard let model = slot.withModel({ $0 }) else { return nil }
+		let request = VNCoreMLRequest(model: model)
+		request.imageCropAndScaleOption = .scaleFill
+		let handler = VNImageRequestHandler(cvPixelBuffer: sample.pixelBuffer, options: [:])
+		do { try handler.perform([request]) } catch { return nil }
+		guard let objects = request.results as? [VNRecognizedObjectObservation] else { return nil }
+		var best: Float = 0
+		for object in objects {
+			guard let top = object.labels.first else { continue }
+			guard top.confidence.isFinite, (0...1).contains(top.confidence) else { return nil }
+			if top.identifier == Self.spoofLabel { best = max(best, top.confidence) }
+		}
+		return best
+	}
+}
