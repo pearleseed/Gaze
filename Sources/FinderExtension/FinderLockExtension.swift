@@ -1,5 +1,6 @@
 import Cocoa
 import FinderSync
+import GazeCore
 
 /// The Finder Sync extension behind right-click Lock/Unlock with Gaze.
 ///

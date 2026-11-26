@@ -26,6 +26,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # nobody gave.
 EXCLUDE=(
 	"Resources/FaceEmbedding.mlmodel"
+	"Resources/FaceEmbedding.mlmodelc/"
 	"Resources/FaceEmbedding.mlpackage/"
 	"Resources/Liveness.mlmodelc/"
 	"Resources/Liveness.mlpackage/"
@@ -79,8 +80,9 @@ Spoof detector, and movement challenges do not depend on the legacy weights.
 
 ## What that means for building
 
-`./build.sh` builds with the available resources and reports a missing recognition
-model. The legacy texture model is excluded from app bundles too.
+`./build.sh` builds from `Package.swift` and `Gaze.xcodeproj` with the available
+resources and reports a missing recognition model. The legacy texture model is
+excluded from app bundles too.
 NOTICE
 
 echo "→ Packing"

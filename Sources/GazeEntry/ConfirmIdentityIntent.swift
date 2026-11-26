@@ -1,12 +1,6 @@
 import AppIntents
 import Foundation
-import GazeSecurity
-
-/// Set by the app at launch so the Shortcuts action can reach the live check.
-@MainActor
-enum FaceApprovalCenter {
-	static var check: FaceApprovalCheck?
-}
+import GazeApp
 
 /// Proves presence only: the person in front of the Mac showed an enrolled face
 /// and nodded. The shortcut chooses the reason text, so this action must not gate
@@ -27,16 +21,15 @@ struct ConfirmIdentityIntent: AppIntent {
 		Self.callTimes = Self.callTimes.filter { now.timeIntervalSince($0) < 60 }
 		guard Self.callTimes.count < 3 else { return Self.finished(.unavailable) }
 		Self.callTimes.append(now)
-		guard let check = FaceApprovalCenter.check else { return Self.finished(.unavailable) }
 		let subject = "A shortcut asks: \(Self.truncated(reason))"
-		let outcome = await check.run(subject: subject, isStillWanted: { true }, onApproved: { true })
+		let outcome = await FaceApprovalCenter.run(subject: subject)
 		return Self.finished(outcome)
 	}
 
 	/// Always ends with words. With a bare value, a run from an automation or the
 	/// widget leaves the system card on its spinner with nothing to say.
 	@MainActor
-	private static func finished(_ outcome: FaceApprovalCheck.Outcome) -> some IntentResult & ReturnsValue<Bool> & ProvidesDialog {
+	private static func finished(_ outcome: FaceApprovalCenter.Outcome) -> some IntentResult & ReturnsValue<Bool> & ProvidesDialog {
 		let text: String
 		switch outcome {
 		case .approved: text = "Confirmed it’s you."

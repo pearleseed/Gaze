@@ -1,4 +1,5 @@
 import Foundation
+import GazeCore
 
 /// The Finder's contextual-menu decision. Foundation-only so the app tests
 /// compile it unchanged; the extension links it alongside AppLockStore.

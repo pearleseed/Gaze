@@ -53,6 +53,14 @@ if [ "$BUILD" = 0 ]; then
 	/usr/bin/codesign --verify --deep --strict "$APP"
 fi
 
+is_fresh_binary() {
+	local binary="$1" marker="$2" bin_mtime marker_mtime
+	[ -x "$binary" ] || return 1
+	bin_mtime="$(/usr/bin/stat -f '%Fm' "$binary" 2>/dev/null || printf '0')"
+	marker_mtime="$(/usr/bin/stat -f '%Fm' "$marker" 2>/dev/null || printf '0')"
+	/usr/bin/awk -v b="$bin_mtime" -v m="$marker_mtime" 'BEGIN { exit !(b > m) }'
+}
+
 if [ "$BUILD" = 1 ]; then
 	mkdir -p "$ROOT/build"
 	MARKER="$(mktemp "$ROOT/build/.gaze-run-start.XXXXXX")"
@@ -65,7 +73,7 @@ if [ "$BUILD" = 1 ]; then
 		echo "Build failed. Not launching the previous binary." >&2
 		exit 1
 	fi
-	[ -x "$BINARY" ] && [ "$BINARY" -nt "$MARKER" ] || {
+	is_fresh_binary "$BINARY" "$MARKER" || {
 		echo "Build did not produce a fresh executable. Not launching." >&2
 		exit 1
 	}
