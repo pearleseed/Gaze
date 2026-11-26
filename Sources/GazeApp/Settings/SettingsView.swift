@@ -7,6 +7,29 @@ import GazeRecognition
 import GazeSecurity
 import GazeUpdates
 
+/// Coalesces rapid bursts of external state refreshes (e.g. `.onAppear` followed immediately
+/// by `NSApplication.didBecomeActiveNotification`) within a short time window.
+package struct ExternalRefreshCoalescer: Sendable {
+	private let minimumInterval: Duration
+	private var lastRefreshAt: ContinuousClock.Instant?
+
+	package init(minimumInterval: Duration = .milliseconds(150)) {
+		self.minimumInterval = minimumInterval
+	}
+
+	package mutating func shouldRefresh(now: ContinuousClock.Instant = .now, force: Bool = false) -> Bool {
+		if !force, let lastRefreshAt, lastRefreshAt.duration(to: now) < minimumInterval {
+			return false
+		}
+		lastRefreshAt = now
+		return true
+	}
+
+	package mutating func reset() {
+		lastRefreshAt = nil
+	}
+}
+
 struct SettingsView: View {
 
 	/// The width of the settings column, matching System Settings' own detail measure.
@@ -74,6 +97,7 @@ struct SettingsView: View {
 	/// Restarts the highlight expiry on every selection, including a repeat of
 	/// the same section.
 	@State private var highlightToken: UUID?
+	@State private var externalRefreshCoalescer = ExternalRefreshCoalescer()
 
 	@Environment(\.openWindow) private var openWindow
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -251,6 +275,7 @@ struct SettingsView: View {
 		.onDisappear {
 			highlightedSearchSection = nil
 			highlightToken = nil
+			externalRefreshCoalescer.reset()
 			AppActivation.returnToBackgroundIfIdle()
 		}
 	}
@@ -481,7 +506,8 @@ struct SettingsView: View {
 	}
 
 	/// Re-reads the state this window shows but does not own.
-	private func refreshExternalState() {
+	private func refreshExternalState(force: Bool = false) {
+		guard externalRefreshCoalescer.shouldRefresh(force: force) else { return }
 		hasStoredPassword = PasswordVault.hasPassword
 		cameraGranted = Self.cameraAuthorized
 		accessibilityGranted = SetupPermissionStatus.current.isReady

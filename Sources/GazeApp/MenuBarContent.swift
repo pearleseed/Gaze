@@ -76,8 +76,18 @@ struct GazeStatusItemLabel: View {
 	}
 }
 
-struct MenuBarContent: View {
+package struct MenuBarStatusSnapshot: Equatable, Sendable {
+	package let title: String
+	package let opensSettings: Bool
 
+	package init(title: String, opensSettings: Bool) {
+		self.title = title
+		self.opensSettings = opensSettings
+	}
+}
+
+@MainActor
+package enum MenuBarStatusModel {
 	/// Just the time, in whatever form this Mac writes times. Built once — a
 	/// `DateFormatter` per menu redraw is a surprising amount of work for six characters.
 	private static let clock: DateFormatter = {
@@ -87,73 +97,97 @@ struct MenuBarContent: View {
 		return formatter
 	}()
 
+	/// Evaluates the menu bar status row in a single pass, calling `readiness` at most once.
+	package static func evaluate(
+		executionPolicy: UnlockExecutionPolicy,
+		isLockedOut: Bool,
+		isEnrolled: Bool,
+		isPaused: Bool,
+		pausedUntil: Date?,
+		cameraAuthorized: Bool,
+		passwordReplayEnabled: Bool,
+		unlockBackend: UnlockBackendKind,
+		readiness: () -> BackendReadiness
+	) -> MenuBarStatusSnapshot {
+		switch executionPolicy {
+		case .uiReview:
+			return MenuBarStatusSnapshot(title: "UI review — unlocking is off", opensSettings: false)
+		case .scanOnly:
+			return MenuBarStatusSnapshot(title: "Scan-only mode — unlocking is off", opensSettings: false)
+		case .normal:
+			break
+		}
+		if isLockedOut {
+			return MenuBarStatusSnapshot(title: "Locked out — password required", opensSettings: true)
+		}
+		if !isEnrolled {
+			return MenuBarStatusSnapshot(title: "No face enrolled", opensSettings: true)
+		}
+		if isPaused {
+			return MenuBarStatusSnapshot(
+				title: "Paused until \(clock.string(from: pausedUntil ?? Date()))",
+				opensSettings: false
+			)
+		}
+		if !cameraAuthorized {
+			return MenuBarStatusSnapshot(title: "Camera access needed", opensSettings: true)
+		}
+		if !passwordReplayEnabled {
+			return MenuBarStatusSnapshot(title: "Mac unlocking is off", opensSettings: true)
+		}
+		if unlockBackend == .none {
+			return MenuBarStatusSnapshot(title: "Recognition only", opensSettings: false)
+		}
+		switch readiness() {
+		case .ready:
+			return MenuBarStatusSnapshot(title: "Gaze is ready", opensSettings: false)
+		case .needsSetup, .unavailable:
+			return MenuBarStatusSnapshot(title: "Unlock needs attention — open Settings", opensSettings: true)
+		}
+	}
+}
+
+struct MenuBarContent: View {
+
 	let store: FaceEnrollmentStore
 	let lockout: LockoutManager
 
 	@Environment(\.openWindow) private var openWindow
 	@State private var preferences = Preferences.shared
 
-	private var menuStatus: String {
-		switch AppServices.executionPolicy {
-		case .uiReview: return "UI review — unlocking is off"
-		case .scanOnly: return "Scan-only mode — unlocking is off"
-		case .normal: break
-		}
-		if lockout.isLockedOut { return "Locked out — password required" }
-		if !store.isEnrolled { return "No face enrolled" }
-		if preferences.isPaused {
-			return "Paused until \(Self.clock.string(from: preferences.pausedUntil ?? Date()))"
-		}
-		if AVCaptureDevice.authorizationStatus(for: .video) != .authorized { return "Camera access needed" }
-		if !PasswordReplaySafety.isEnabled { return "Mac unlocking is off" }
-		if preferences.unlockBackend == .none { return "Recognition only" }
-		let backend: UnlockBackend = switch preferences.unlockBackend {
-		case .none: NoUnlockBackend()
-		case .keystroke: KeystrokeUnlockBackend()
-		}
-		switch backend.readiness() {
-		case .ready: return "Gaze is ready"
-		case .needsSetup, .unavailable: return "Unlock needs attention — open Settings"
-		}
-	}
-
-	/// Whether the status row opens Settings: the same conditions as
-	/// `menuStatus`, minus the informational states (ready, paused,
-	/// recognition-only, restricted execution modes). Matched on conditions,
-	/// never on the displayed strings.
-	private var menuStatusOpensSettings: Bool {
-		switch AppServices.executionPolicy {
-		case .uiReview, .scanOnly: return false
-		case .normal: break
-		}
-		if lockout.isLockedOut { return true }
-		if !store.isEnrolled { return true }
-		if preferences.isPaused { return false }
-		if AVCaptureDevice.authorizationStatus(for: .video) != .authorized { return true }
-		if !PasswordReplaySafety.isEnabled { return true }
-		if preferences.unlockBackend == .none { return false }
-		let backend: UnlockBackend = switch preferences.unlockBackend {
-		case .none: NoUnlockBackend()
-		case .keystroke: KeystrokeUnlockBackend()
-		}
-		switch backend.readiness() {
-		case .ready: return false
-		case .needsSetup, .unavailable: return true
-		}
+	private var statusSnapshot: MenuBarStatusSnapshot {
+		MenuBarStatusModel.evaluate(
+			executionPolicy: AppServices.executionPolicy,
+			isLockedOut: lockout.isLockedOut,
+			isEnrolled: store.isEnrolled,
+			isPaused: preferences.isPaused,
+			pausedUntil: preferences.pausedUntil,
+			cameraAuthorized: AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
+			passwordReplayEnabled: PasswordReplaySafety.isEnabled,
+			unlockBackend: preferences.unlockBackend,
+			readiness: {
+				let backend: UnlockBackend = switch preferences.unlockBackend {
+				case .none: NoUnlockBackend()
+				case .keystroke: KeystrokeUnlockBackend()
+				}
+				return backend.readiness()
+			}
+		)
 	}
 
 	var body: some View {
+		let status = statusSnapshot
 		// Problem states open Settings; informational states stay text. The row
 		// never toggles, enrolls, or unlocks — it only presents Settings.
-		if menuStatusOpensSettings {
+		if status.opensSettings {
 			Button {
 				AppActivation.bringToFront(userInitiated: true)
 				openWindow(id: "settings")
 			} label: {
-				Text(menuStatus)
+				Text(status.title)
 			}
 		} else {
-			Text(menuStatus)
+			Text(status.title)
 		}
 
 		Divider()

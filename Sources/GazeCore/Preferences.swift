@@ -244,6 +244,7 @@ package final class Preferences {
 	}
 
 	private let defaults: UserDefaults
+	private let storesAdminPromptInKeychain: Bool
 
 	/// How long "pause" can mean.
 	///
@@ -293,7 +294,10 @@ package final class Preferences {
 	/// still in the future or it has expired, and both answers are correct without anyone
 	/// having to keep a timer alive.
 	package var pausedUntil: Date? {
-		didSet { defaults.set(pausedUntil, forKey: Key.pausedUntil) }
+		didSet {
+			defaults.set(pausedUntil, forKey: Key.pausedUntil)
+			NotificationCenter.default.post(name: .gazeAdminPromptPolicyChanged, object: self)
+		}
 	}
 
 	/// Whether Gaze should stay out of the way right now.
@@ -357,11 +361,14 @@ package final class Preferences {
 		didSet {
 			// A failed write leaves the item missing, which `AdminPromptApproval`
 			// re-reads per prompt and treats as off.
-			if approveAdminPrompts {
-				Self.storeAdminPromptApproval()
-			} else {
-				Self.deleteAdminPromptApproval()
+			if storesAdminPromptInKeychain {
+				if approveAdminPrompts {
+					Self.storeAdminPromptApproval()
+				} else {
+					Self.deleteAdminPromptApproval()
+				}
 			}
+			NotificationCenter.default.post(name: .gazeAdminPromptPolicyChanged, object: self)
 		}
 	}
 
@@ -539,6 +546,8 @@ package final class Preferences {
 
 	package init(defaults: UserDefaults) {
 		self.defaults = defaults
+		let usesKeychain = (defaults === UserDefaults.standard)
+		self.storesAdminPromptInKeychain = usesKeychain
 		pausedUntil = defaults.object(forKey: Key.pausedUntil) as? Date
 		walkAwayLock = defaults.bool(forKey: Key.walkAwayLock)
 		touchIDFallback = defaults.object(forKey: Key.touchIDFallback) as? Bool ?? true
@@ -547,7 +556,7 @@ package final class Preferences {
 		allowExternalCamera = defaults.object(forKey: Key.allowExternalCamera) as? Bool ?? false
 		// The old UserDefaults copy is ignored: only the keychain item turns this on.
 		defaults.removeObject(forKey: Key.approveAdminPrompts)
-		approveAdminPrompts = Self.adminPromptApprovalIsStored()
+		approveAdminPrompts = usesKeychain ? Self.adminPromptApprovalIsStored() : false
 		unlockMovementCount = UnlockMovementCount.resolve(
 			stored: defaults.object(forKey: Key.unlockMovementCount))
 		lookMovement = defaults.object(forKey: Key.lookMovement) as? Bool ?? true
@@ -608,4 +617,8 @@ package final class Preferences {
 extension Notification.Name {
 	/// Posted from `showsMenuBarIcon`'s didSet so the menu bar icon follows the setting.
 	package static let gazeMenuBarVisibilityChanged = Notification.Name("GazeMenuBarVisibilityChanged")
+	/// Posted when `approveAdminPrompts` or `pausedUntil` changes so observers can sync polling state immediately.
+	package static let gazeAdminPromptPolicyChanged = Notification.Name("GazeAdminPromptPolicyChanged")
+	/// Posted when `PasswordReplaySafety` opt-in state changes on standard defaults.
+	package static let gazePasswordReplaySafetyChanged = Notification.Name("GazePasswordReplaySafetyChanged")
 }

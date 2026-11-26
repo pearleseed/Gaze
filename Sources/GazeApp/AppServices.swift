@@ -156,11 +156,13 @@ final class AppServices {
 		// policies must stop a watcher left over from a mode switch, and an
 		// enabled setting must start one even with backend none / replay off.
 		syncPresenceWatcher()
-		// Polls only while the setting is on; it checks the setting on every tick.
+		// Polls only while approveAdminPrompts is enabled and unpaused.
 		let check = faceApprovals ?? FaceApprovalCheck(store: store, lockout: lockout)
 		faceApprovals = check
 		FaceApprovalCenter.check = check
-		if adminPrompts == nil {
+		if let adminPrompts {
+			adminPrompts.syncTimerState()
+		} else {
 			let service = AdminPromptApproval(store: store, lockout: lockout, check: check)
 			service.start()
 			adminPrompts = service

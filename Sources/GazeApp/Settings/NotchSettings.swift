@@ -188,6 +188,7 @@ private struct NotchAppearancePreview: View {
 	let settings: Preferences
 	@State private var model: NotchCapsuleModel
 	@State private var wallpaper = DesktopWallpaper.shared
+	@State private var wallpaperToken: DesktopWallpaper.WallpaperVisibilityToken?
 
 	init(settings: Preferences) {
 		self.settings = settings
@@ -235,8 +236,18 @@ private struct NotchAppearancePreview: View {
 		.onChange(of: settings.showNotchCaptions) { _, _ in syncAppearance() }
 		.onChange(of: settings.nativeUnlockAnimation) { _, _ in syncAppearance() }
 		.onChange(of: settings.unlockAnimationColour) { _, _ in syncAppearance() }
-		.onAppear { syncAppearance(); model.isExpanded = true }
-		.onDisappear { model.isExpanded = false }
+		.onAppear {
+			syncAppearance()
+			model.isExpanded = true
+			if wallpaperToken == nil {
+				wallpaperToken = wallpaper.acquirePollingToken()
+			}
+		}
+		.onDisappear {
+			model.isExpanded = false
+			wallpaperToken?.invalidate()
+			wallpaperToken = nil
+		}
 	}
 
 	private var previewDescription: String {

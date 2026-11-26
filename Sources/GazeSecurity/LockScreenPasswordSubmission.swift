@@ -13,6 +13,9 @@ package enum PasswordReplaySafety {
 
 	package static func setEnabled(_ enabled: Bool, in defaults: UserDefaults = .standard) {
 		defaults.set(enabled, forKey: consentKey)
+		if defaults === UserDefaults.standard {
+			NotificationCenter.default.post(name: .gazePasswordReplaySafetyChanged, object: nil)
+		}
 	}
 
 	package static func requireEnabled(in defaults: UserDefaults = .standard) throws {

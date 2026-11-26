@@ -28,11 +28,15 @@ import os
 /// Each prompt gets one try; a prompt that stays open afterwards is left to the user.
 @MainActor
 package final class AdminPromptApproval {
-	private let store: FaceEnrollmentStore
-	private let lockout: LockoutManager
+	private let preferences: Preferences
+	private let isPasswordReplayEnabled: @MainActor () -> Bool
+	private let observesSharedPasswordReplaySafety: Bool
+	private let executionPolicy: UnlockExecutionPolicy
+	private var isStarted = false
 	private var timer: Timer?
+	private var resumeTimer: Timer?
 	private var busy = false
-	private let check: FaceApprovalCheck
+	private let check: FaceApprovalCheck?
 	/// Prompts already tried, so a refused or cancelled one is never retried.
 	private var handled: [AXUIElement] = []
 	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "AdminPrompt")
@@ -41,17 +45,45 @@ package final class AdminPromptApproval {
 	private static var frontmostBundleID: String?
 	private static var frontmostPID: pid_t?
 	private var activationObserver: NSObjectProtocol?
+	private var preferenceObserver: NSObjectProtocol?
+	private var passwordReplayObserver: NSObjectProtocol?
 	private static let appleRequesterNames: Set<String> = ["installer", "system settings",
 		"system preferences", "software update", "disk utility", "finder",
 		"migration assistant", "directory utility", "keychain access"]
 
-	package init(store: FaceEnrollmentStore, lockout: LockoutManager, check: FaceApprovalCheck) {
-		self.store = store
-		self.lockout = lockout
+	package var isPollingActive: Bool { timer != nil }
+
+	package convenience init(
+		store: FaceEnrollmentStore,
+		lockout: LockoutManager,
+		check: FaceApprovalCheck,
+		preferences: Preferences = .shared,
+		isPasswordReplayEnabled: (@MainActor () -> Bool)? = nil,
+		executionPolicy: UnlockExecutionPolicy = .current
+	) {
+		self.init(
+			check: check,
+			preferences: preferences,
+			isPasswordReplayEnabled: isPasswordReplayEnabled,
+			executionPolicy: executionPolicy
+		)
+	}
+
+	package init(
+		check: FaceApprovalCheck? = nil,
+		preferences: Preferences = .shared,
+		isPasswordReplayEnabled: (@MainActor () -> Bool)? = nil,
+		executionPolicy: UnlockExecutionPolicy = .current
+	) {
 		self.check = check
+		self.preferences = preferences
+		self.observesSharedPasswordReplaySafety = (isPasswordReplayEnabled == nil)
+		self.isPasswordReplayEnabled = isPasswordReplayEnabled ?? { PasswordReplaySafety.isEnabled }
+		self.executionPolicy = executionPolicy
 	}
 
 	package func start() {
+		isStarted = true
 		if activationObserver == nil {
 			activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
 				forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
@@ -65,23 +97,113 @@ package final class AdminPromptApproval {
 				}
 			}
 		}
-		guard timer == nil else { return }
-		let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-			MainActor.assumeIsolated { self?.poll() }
+		if preferenceObserver == nil {
+			preferenceObserver = observeSyncNotification(name: .gazeAdminPromptPolicyChanged, object: preferences)
 		}
-		RunLoop.main.add(timer, forMode: .common)
-		self.timer = timer
+		if observesSharedPasswordReplaySafety, passwordReplayObserver == nil {
+			passwordReplayObserver = observeSyncNotification(name: .gazePasswordReplaySafetyChanged, object: nil)
+		}
+		syncTimerState()
 	}
 
 	package func stop() {
+		isStarted = false
+		tearDownTimersAndObservers()
+	}
+
+	isolated deinit {
+		tearDownTimersAndObservers()
+	}
+
+	private func observeSyncNotification(name: Notification.Name, object: Any?) -> NSObjectProtocol {
+		NotificationCenter.default.addObserver(forName: name, object: object, queue: nil) { [weak self] _ in
+			if Thread.isMainThread {
+				MainActor.assumeIsolated { self?.syncTimerState() }
+			} else {
+				Task { @MainActor [weak self] in self?.syncTimerState() }
+			}
+		}
+	}
+
+	private func tearDownTimersAndObservers() {
 		timer?.invalidate()
 		timer = nil
+		resumeTimer?.invalidate()
+		resumeTimer = nil
+		if let activationObserver {
+			NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+			self.activationObserver = nil
+		}
+		if let preferenceObserver {
+			NotificationCenter.default.removeObserver(preferenceObserver)
+			self.preferenceObserver = nil
+		}
+		if let passwordReplayObserver {
+			NotificationCenter.default.removeObserver(passwordReplayObserver)
+			self.passwordReplayObserver = nil
+		}
+	}
+
+	package func syncTimerState() {
+		resumeTimer?.invalidate()
+		resumeTimer = nil
+
+		if let internalPausedUntil = pausedUntil, ContinuousClock.now >= internalPausedUntil {
+			pausedUntil = nil
+		}
+
+		guard isStarted, basePolicyEnabled else {
+			timer?.invalidate()
+			timer = nil
+			return
+		}
+
+		var resumeDelay: TimeInterval?
+		if let prefPausedUntil = preferences.pausedUntil {
+			let remaining = prefPausedUntil.timeIntervalSinceNow
+			if remaining > 0 {
+				resumeDelay = max(resumeDelay ?? 0, remaining)
+			}
+		}
+		if let internalPausedUntil = pausedUntil {
+			let remainingDuration = ContinuousClock.now.duration(to: internalPausedUntil)
+			let seconds = Double(remainingDuration.components.seconds)
+				+ Double(remainingDuration.components.attoseconds) / 1e18
+			if seconds > 0 {
+				resumeDelay = max(resumeDelay ?? 0, seconds)
+			}
+		}
+
+		if let resumeDelay {
+			timer?.invalidate()
+			timer = nil
+			// Fire slightly past the deadline so `preferences.isPaused` (`pausedUntil > Date()`) reads false.
+			let oneShot = Timer(timeInterval: resumeDelay + 0.005, repeats: false) { [weak self] _ in
+				MainActor.assumeIsolated { self?.syncTimerState() }
+			}
+			oneShot.tolerance = resumeDelay > 10 ? min(5.0, resumeDelay * 0.05) : 0
+			RunLoop.main.add(oneShot, forMode: .common)
+			resumeTimer = oneShot
+			return
+		}
+
+		guard timer == nil else { return }
+		let pollingTimer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated { self?.poll() }
+		}
+		RunLoop.main.add(pollingTimer, forMode: .common)
+		self.timer = pollingTimer
+	}
+
+	private var basePolicyEnabled: Bool {
+		let replayEnabled = isPasswordReplayEnabled()
+		return preferences.approveAdminPrompts
+			&& replayEnabled
+			&& executionPolicy.permitsAdminPromptApproval(passwordReplayEnabled: replayEnabled)
 	}
 
 	private var enabled: Bool {
-		Preferences.shared.approveAdminPrompts && !Preferences.shared.isPaused
-			&& PasswordReplaySafety.isEnabled
-			&& UnlockExecutionPolicy.current.permitsAdminPromptApproval(passwordReplayEnabled: PasswordReplaySafety.isEnabled)
+		basePolicyEnabled && !preferences.isPaused
 	}
 
 	/// Declined checks in a row; two of them pause handling so a flood of prompts
@@ -114,7 +236,7 @@ package final class AdminPromptApproval {
 			guard ContinuousClock.now >= pausedUntil else { return }
 			self.pausedUntil = nil
 		}
-		guard enabled, !busy, AXIsProcessTrusted(), AutofillConsoleSession.current() != nil else {
+		guard enabled, !busy, check != nil, AXIsProcessTrusted(), AutofillConsoleSession.current() != nil else {
 			if !busy { handled.removeAll() }
 			return
 		}
@@ -331,7 +453,7 @@ package final class AdminPromptApproval {
 	// MARK: - Approving
 
 	private func approve(_ prompt: Prompt, requester: Requester) async {
-		guard (try? PasswordVault.containsPassword()) == true, !PasswordVault.isStale else { return }
+		guard let check, (try? PasswordVault.containsPassword()) == true, !PasswordVault.isStale else { return }
 		let name = requester.title.name
 		let subject = "\(name) \(requester.title.action)"
 		let details = FaceApprovalCheck.Details(name: name, action: requester.title.action, rows: [
@@ -353,6 +475,7 @@ package final class AdminPromptApproval {
 			if declines >= 2 {
 				declines = 0
 				pausedUntil = ContinuousClock.now.advanced(by: .seconds(300))
+				syncTimerState()
 				Self.logger.notice("Two admin prompts in a row were declined; not handling admin prompts for 5 minutes.")
 			}
 		case .unavailable:

@@ -118,50 +118,137 @@ private final class WallpaperStoreChangeBox: Sendable {
 ///   - the result is cached, so switching panes does not re-blur anything.
 @Observable
 @MainActor
-final class DesktopWallpaper {
+package final class DesktopWallpaper {
 
-	static let shared = DesktopWallpaper()
+	/// RAII visibility token keeping the 2 s fallback wallpaper poll active while
+	/// a wallpaper-consuming preview view is on screen.
+	@MainActor
+	package final class WallpaperVisibilityToken {
+		private var releaseAction: (@MainActor () -> Void)?
 
-	private(set) var image: NSImage?
+		init(onRelease: @escaping @MainActor () -> Void) {
+			self.releaseAction = onRelease
+		}
+
+		package func invalidate() {
+			guard let action = releaseAction else { return }
+			releaseAction = nil
+			action()
+		}
+
+		isolated deinit {
+			releaseAction?()
+		}
+	}
+
+	package static let shared = DesktopWallpaper()
+
+	package private(set) var image: NSImage?
 
 	private let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Wallpaper")
 	@ObservationIgnored private var loadGate = WallpaperLoadGate()
 	@ObservationIgnored private var loadTask: Task<Void, Never>?
 	@ObservationIgnored private var reportedUnresolvedURL = false
 	@ObservationIgnored private var storeMonitor: WallpaperStoreMonitor?
+	@ObservationIgnored private var workspaceObserver: NSObjectProtocol?
+	@ObservationIgnored private var appActiveObserver: NSObjectProtocol?
+	@ObservationIgnored private var activeTokenIDs: Set<UUID> = []
+	@ObservationIgnored private var fallbackPollTask: Task<Void, Never>?
+	@ObservationIgnored private let pollInterval: Duration
+	@ObservationIgnored private let onRefresh: (@MainActor () -> Void)?
 
-	private init() {
-		load()
+	package var isFallbackPollingActive: Bool {
+		fallbackPollTask != nil && !activeTokenIDs.isEmpty
+	}
+
+	private convenience init() {
+		self.init(observeSystemEvents: true)
+	}
+
+	package init(
+		observeSystemEvents: Bool = true,
+		pollInterval: Duration = .seconds(2),
+		onRefresh: (@MainActor () -> Void)? = nil
+	) {
+		self.pollInterval = pollInterval
+		self.onRefresh = onRefresh
+
+		guard observeSystemEvents else { return }
+
+		refresh()
 
 		// The desktop picture changes when the user picks a new one, and — with per-space
 		// wallpapers — when they switch spaces. Neither posts a "wallpaper changed"
 		// notification, so this watches the two things that do happen alongside it.
 		let center = NSWorkspace.shared.notificationCenter
-		center.addObserver(
+		workspaceObserver = center.addObserver(
 			forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
 		) { [weak self] _ in
-			MainActor.assumeIsolated { self?.load() }
+			MainActor.assumeIsolated { self?.refresh() }
 		}
-		NotificationCenter.default.addObserver(
+		appActiveObserver = NotificationCenter.default.addObserver(
 			forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
 		) { [weak self] _ in
-			MainActor.assumeIsolated { self?.load() }
+			MainActor.assumeIsolated { self?.refresh() }
 		}
 
-		// Event-driven invalidation for the wallpaper store. The 2s poll below stays as
-		// the fallback for anything the stream misses.
+		// Event-driven invalidation for the wallpaper store. The slow 2s fallback poll
+		// runs only while at least one wallpaper preview view holds a visibility token.
 		startStoreMonitor()
+	}
 
-		// And a slow poll, because neither of those fires for the common case: changing
-		// the desktop picture in System Settings while a Gaze window is already open and
-		// frontmost. Two seconds is imperceptible as a delay and costs a string compare —
-		// `load()` returns immediately unless the URL actually changed.
-		Task { [weak self] in
+	isolated deinit {
+		fallbackPollTask?.cancel()
+		loadTask?.cancel()
+		storeMonitor = nil
+		if let workspaceObserver {
+			NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+		}
+		if let appActiveObserver {
+			NotificationCenter.default.removeObserver(appActiveObserver)
+		}
+	}
+
+	/// Acquires an active-observer token that enables the 2 s fallback poll while held.
+	/// Transitions from 0 -> 1 active tokens refresh immediately.
+	package func acquirePollingToken() -> WallpaperVisibilityToken {
+		let id = UUID()
+		let wasInactive = activeTokenIDs.isEmpty
+		activeTokenIDs.insert(id)
+		if wasInactive {
+			startFallbackPolling()
+			refresh()
+		}
+		return WallpaperVisibilityToken { [weak self] in
+			self?.releasePollingToken(id)
+		}
+	}
+
+	private func releasePollingToken(_ id: UUID) {
+		guard activeTokenIDs.remove(id) != nil else { return }
+		if activeTokenIDs.isEmpty {
+			fallbackPollTask?.cancel()
+			fallbackPollTask = nil
+		}
+	}
+
+	private func startFallbackPolling() {
+		guard fallbackPollTask == nil else { return }
+		let interval = pollInterval
+		fallbackPollTask = Task { [weak self] in
 			while !Task.isCancelled {
-				try? await Task.sleep(for: .seconds(2))
-				guard let self else { return }
-				self.load()
+				try? await Task.sleep(for: interval)
+				guard !Task.isCancelled, let self, !self.activeTokenIDs.isEmpty else { return }
+				self.refresh()
 			}
+		}
+	}
+
+	private func refresh() {
+		if let onRefresh {
+			onRefresh()
+		} else {
+			load()
 		}
 	}
 
@@ -221,7 +308,7 @@ final class DesktopWallpaper {
 	private func storeDidChange() {
 		Self.lastIndexMtime = nil
 		Self.lastAerialResult = nil
-		load()
+		refresh()
 	}
 
 	nonisolated private static func wallpaperStoreDirectory() -> URL? {
