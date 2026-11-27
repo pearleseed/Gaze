@@ -1,8 +1,7 @@
 <div align="center">
   <img src="docs/images/icon.png" width="128" alt="Gaze app icon" />
   <h1>Gaze</h1>
-  <p>Gaze is an app that brings the Face ID feature of your iPhone to your Mac.</p>
-  <p>Look at your Mac to unlock it. Private, on-device, and free.</p>
+  <p>On-device Face ID-style unlock for macOS. Private, local, and open source.</p>
   <p>
     <a href="https://github.com/pearleseed/Gaze"><img src="docs/images/badge-macos.png" width="179" alt="macOS 26 or later" /></a>
     <a href="https://www.swift.org"><img src="docs/images/badge-swift.png" width="112" alt="Swift 6" /></a>
@@ -20,43 +19,55 @@
 
 ## Features
 
-Face ID for Mac, with nothing leaving your computer.
-
 <p align="center">
-  <img src="docs/images/card-unlock.png" width="49%" alt="Unlocks as you look. On the lock screen, Gaze finds your face and unlocks. The notch shows it smiling as it recognises you." />
-  <img src="docs/images/card-local.png" width="49%" alt="Stays on your Mac. Your password is stored with a key from this Mac's Secure Enclave. Nothing leaves your computer." />
-  <img src="docs/images/card-recognition.png" width="49%" alt="Knows it is you. Before it unlocks, Gaze can ask for a quick head movement, and it rejects photos and screens." />
-  <img src="docs/images/card-choice.png" width="49%" alt="Your choice, always. Switch unlocking on or off, add another face, or test recognition whenever you like." />
+  <img src="docs/images/card-unlock.png" width="49%" alt="Unlocks as you look" />
+  <img src="docs/images/card-local.png" width="49%" alt="Stays on your Mac" />
+  <img src="docs/images/card-recognition.png" width="49%" alt="Knows it is you" />
+  <img src="docs/images/card-choice.png" width="49%" alt="Your choice, always" />
 </p>
 
-## Simple to install.
+- **Lock-screen unlock:** Recognizes your face on wake and unlocks macOS automatically with a native notch/Dynamic Island panel.
+- **Liveness & anti-spoofing:** Rejects photos and screens with on-device anti-spoof detection and optional head-movement or gaze challenges.
+- **Walk-away lock:** Locks your Mac automatically when you step away, using lightweight rectangles-only presence detection.
+- **App Lock, `sudo` PAM & admin prompts:** Lock selected apps (with a Finder extension) and approve `sudo` or Apple administrator dialogs with your face.
+- **GitHub Releases self-updating:** Checks `pearleseed/Gaze` releases with mandatory HTTPS and SHA-256 verification before installing updates.
 
-Install with Homebrew, which clears macOS quarantine on install and upgrade:
+## Requirements
+
+- macOS 26 Tahoe or later (Apple Silicon or Intel)
+- A built-in or connected camera
+- Your macOS login password
+
+## Installation
+
+### Homebrew
+
+Install with Homebrew (automatically clears macOS quarantine on install and upgrade):
 
 ```sh
 brew install --cask pearleseed/gaze/gaze
 ```
 
-Or download the latest DMG from [GitHub Releases](https://github.com/pearleseed/Gaze/releases) and drag Gaze to Applications. Because builds are not Apple-notarized, the first time you open it, go to **System Settings → Privacy & Security** and click **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/Gaze.app`).
+### GitHub Releases DMG
 
-## Unlocks as you look.
+Download the latest architecture-matched DMG from [GitHub Releases](https://github.com/pearleseed/Gaze/releases) and drag **Gaze** to `/Applications`.
 
-When your Mac locks, Gaze turns on the camera and looks for you. It compares your face with the one you set up, may ask you to turn your head, then enters your password and unlocks. If anything doesn’t match, you sign in as usual.
+Because release builds are not Apple-notarized, on first launch open **System Settings → Privacy & Security** and click **Open Anyway**, or run:
 
-## Private by design.
+```sh
+xattr -dr com.apple.quarantine /Applications/Gaze.app
+```
 
-Recognition runs on your Mac and nothing is uploaded. Your face data is encrypted, and your password is protected by a key from the Secure Enclave. A Mac camera can’t measure depth like Face ID, so Gaze rejects photos and screens, and your password always works. To report a security issue, open an issue at [github.com/pearleseed/Gaze/issues](https://github.com/pearleseed/Gaze/issues).
+## Privacy & Security
 
-## What you need.
+- **100% on-device:** Face recognition, liveness, and anti-spoofing run locally on your Mac—no biometric data or images are uploaded.
+- **Encrypted storage:** Enrollment data is encrypted locally, and your password is protected with a key from your Mac's Secure Enclave.
+- **Fail-closed design:** Because a standard webcam cannot measure depth like TrueDepth, Gaze rejects photos and screens, enforces strict frame-freshness and continuity bounds, and always lets your login password sign you in.
+- **Reporting issues:** Open bug reports or security issues at [github.com/pearleseed/Gaze/issues](https://github.com/pearleseed/Gaze/issues).
 
-A Mac with macOS 26 Tahoe or later, a built-in or connected camera, and your login password.
+## Building & Testing
 
-## Open source.
-
-Gaze is built in the open. You’ll need Xcode 26 to build it.
-
-Open `Gaze.xcodeproj` and choose the **Gaze** scheme to develop in Xcode. See
-[Tools](Tools/README.md) for local model setup, signing and per-architecture release builds.
+Requires **Xcode 26+** and **Swift 6** on macOS 26 or later.
 
 ```sh
 git clone https://github.com/pearleseed/Gaze.git
@@ -65,12 +76,30 @@ cd Gaze
 open build/Gaze.app
 ```
 
-Source archives don’t include the recognition model; [NOTICE.md](NOTICE.md) explains why. Pull requests and bug reports are welcome at [github.com/pearleseed/Gaze](https://github.com/pearleseed/Gaze).
+- **Xcode development:** Open `Gaze.xcodeproj` and select the **Gaze** scheme.
+- **Unit tests (Swift Testing):** Run `swift test` or `./Tests/run.sh --unit`.
+- **Full local verification:** Run `./Tests/run.sh` (unit tests + release/product-boundary checks) or `./Tests/run.sh --all` (includes desktop integration harnesses).
+- **Local models, signing & DMG releases:** See [Tools/README.md](Tools/README.md) and [Tests/README.md](Tests/README.md). Source archives omit proprietary/research model weights; see [NOTICE.md](NOTICE.md).
 
-## Thanks.
+## Architecture
 
-Gaze wouldn’t exist without [Harsh Vardhan Goswami](https://github.com/theboringhumane), creator of TheBoringNotch, whose GPT-6 Astra API key powered much of its development.
+Gaze is organized as a Swift 6 multi-module Swift Package (`Package.swift`) linked into `Gaze.xcodeproj`:
 
-It also builds on [InsightFace](https://github.com/deepinsight/insightface) for recognition, [Sapphire](https://sapphire-app.tech) for the Core ML model, [TourKit](https://github.com/rampatra/TourKit) for the welcome tour, [Atoll](https://github.com/Ebullioscopic/Atoll) and [SkyLightWindow](https://github.com/Lakr233/SkyLightWindow) for the lock-screen panel, and the [Face Spoof Detection](https://universe.roboflow.com/mohammeds-workspace-ft3sn/face-spoof-detection-liika) dataset. [Glance](https://github.com/jonnyoo/glance) and [DynamicLake](https://dynamiclake.com) inspired its design.
+| Module / Component | Responsibility |
+|---|---|
+| `GazeCore` | `AppIdentity`, preferences, Secure Enclave vault/Keychain, App Lock state store, broadcasts |
+| `GazeDesign` | Theme, typography, Liquid Glass controls, companion Metal renderer |
+| `GazeTourKit` | Vendored onboarding tour UI |
+| `GazeCamera` | Camera pinning, frame leases, continuity tracking, bounded backpressure, presence-only mode |
+| `GazeRecognition` | Core ML face embeddings, model residency, anti-spoofing, iris/pupil tracking, liveness challenges |
+| `GazeLockScreen` | Lock-screen notch/Dynamic Island capsule, SkyLight space placement, unlock animation, App Lock shield |
+| `GazeSecurity` | Lock/presence watchers, lockout, password submission guards, attempt log, admin prompt & `sudo` approval |
+| `GazeUpdates` | GitHub Releases feed/download trust policy, SHA-256 verification, in-place updater |
+| `GazeApp` / `GazeEntry` | App lifecycle, menu bar, Settings UI, enrollment/setup flows, AppIntents, `LiquidGlass.metal` |
+| `FinderExtension` & `PAM` | Sandboxed `GazeFinder.appex` (`com.pearleseed.Gaze.Finder`) and `pam_gaze.so` for `sudo` |
 
-<sub>Available under the [MIT license](LICENSE). Some models, code and data have their own terms, listed in [NOTICE.md](NOTICE.md). Gaze is not affiliated with Apple. Face ID, iPhone and Mac are trademarks of Apple Inc.</sub>
+## Acknowledgments & License
+
+Gaze builds on open-source software and research including [InsightFace](https://github.com/deepinsight/insightface), [Sapphire](https://sapphire-app.tech), [MediaPipe Iris](https://github.com/google-ai-edge/mediapipe), [TourKit](https://github.com/rampatra/TourKit), [Atoll](https://github.com/Ebullioscopic/Atoll), [SkyLightWindow](https://github.com/Lakr233/SkyLightWindow), [Glance](https://github.com/jonnyoo/glance), [DynamicLake](https://dynamiclake.com), and the [Face Spoof Detection](https://universe.roboflow.com/mohammeds-workspace-ft3sn/face-spoof-detection-liika) dataset.
+
+<sub>Available under the [MIT License](LICENSE). Third-party code, models, and dataset terms are documented in [NOTICE.md](NOTICE.md). Gaze is not affiliated with Apple. Face ID, iPhone, and Mac are trademarks of Apple Inc.</sub>
