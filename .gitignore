@@ -3,6 +3,7 @@
 build/
 outputs/
 exports/
+docs/superpowers/
 *.dSYM/
 *.dmg
 
@@ -76,7 +77,6 @@ Data/
 .manus/
 .work/
 Icon?
-Integrations/*/build/
 
 # Isolated worktrees
 .worktrees/

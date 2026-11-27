@@ -16,8 +16,8 @@
 //   DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 //     xcrun swift Tools/Scripts/train-spoof-classifier.swift \
 //       --sessions ~/Documents/GazeDataset --work /tmp/spoof-work \
-//       --out outputs/spoof-models/Spoof-classifier.mlmodel \
-//       --metrics outputs/spoof-models/metrics.json --old Resources/Spoof.mlmodel
+//       --out /tmp/spoof-work/Spoof-classifier.mlmodel \
+//       --metrics docs/spoof-model/metrics.json --old Resources/Spoof.mlmodel
 
 import CoreImage
 import CoreML

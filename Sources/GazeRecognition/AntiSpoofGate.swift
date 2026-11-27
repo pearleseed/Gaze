@@ -5,9 +5,7 @@ import GazeCamera
 /// The anti-spoof decision for the unlock path.
 ///
 /// Built on `SpoofDetector` alone: a live/spoof classifier run on the face crop (face plus
-/// margin, so a bezel, screen edge or paper border near the face stays in view). It replaced
-/// a Roboflow object detector that looked for a device in the whole frame and, on Owen's own
-/// camera, caught nothing at its threshold.
+/// margin, so a bezel, screen edge or paper border near the face stays in view).
 ///
 /// The passive texture model (MiniFAS) is **deliberately not used here.** On a webcam it is
 /// unreliable in the direction that matters most — it scored a real, live face 0.000 ("spoof")
@@ -35,13 +33,13 @@ package struct AntiSpoofGate: Sendable {
 	///
 	/// Deliberately conservative: a false reject here turns a genuine user away, so the bar
 	/// to reject is high. Measured by `Tools/Scripts/train-spoof-classifier.swift` on held-out
-	/// data (numbers in `outputs/spoof-models/metrics.json`): Roboflow test frames grouped by
+	/// data (numbers in `docs/spoof-model/metrics.json`): Roboflow test frames grouped by
 	/// subject (100 live, 100 spoof) and one held-out live and one spoof session from
 	/// `DatasetCapture` on Owen's Mac (59 live, 35 spoof crops).
 	///
 	///                          Roboflow test          Owen's camera
 	///                       catches   rejects live  catches   rejects live
-	///     old detector 0.65   26%        6%            0%         0%
+	///     old detector 0.65   26%        6%            0%         0%   (replaced)
 	///     classifier   0.50   46%       10%           20%         7%
 	///     classifier   0.85   38%        6%           14%         2%
 	///     classifier   0.90   37%        4%           11%         0%
@@ -56,9 +54,9 @@ package struct AntiSpoofGate: Sendable {
 	package init(spoof: SpoofDetector?, spoofRejectThreshold: Float = Self.defaultSpoofRejectThreshold) {
 		self.spoofRejectThreshold = spoofRejectThreshold
 		if let spoof {
-			self.usesSharedContextCrop224 = !spoof.isDetector && spoof.side == 224
+			self.usesSharedContextCrop224 = spoof.side == 224
 			self.evaluateConfidence = { sample, contextCrop in
-				if let contextCrop, !spoof.isDetector {
+				if let contextCrop {
 					return spoof.spoofConfidence(preRenderedCrop: contextCrop)
 				}
 				return spoof.spoofConfidence(sample)

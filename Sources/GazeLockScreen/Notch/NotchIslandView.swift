@@ -359,8 +359,8 @@ extension NotchCapsule {
 
 	/// Narrower while resting, full width once it drops.
 	///
-	/// Deliberately smaller than the bar a notch app draws over the same area. Dynamic Lake
-	/// Pro's is about 276pt across and flush with the menu bar; ours resting inside that
+	/// Deliberately smaller than the bar a notch app draws over the same area. Theirs
+	/// is about 276pt across and flush with the menu bar; ours resting inside that
 	/// disappears under it entirely, instead of peeking out a few points wider and lower and
 	/// reading as a second notch behind the first.
 	///

@@ -65,7 +65,6 @@ package final class NotchCapsuleController {
 	package func show(phase: NotchCapsuleModel.Phase = .scanning) {
 		dismissalTask?.cancel()
 		model.phase = phase
-		Self.broadcast(phase)
 		announce(phase: phase)
 
 		if let screen = NSScreen.main {
@@ -141,47 +140,7 @@ package final class NotchCapsuleController {
 		if phase != previous {
 			announce(phase: phase)
 		}
-		Self.broadcast(phase)
 		syncLookTarget(for: phase)
-	}
-
-	/// Mirrors the panel on the public status feed. The movement is read back from the
-	/// prompt's symbol and hint because the phase carries no other record of it.
-	private static func broadcast(_ phase: NotchCapsuleModel.Phase) {
-		switch phase {
-		case .locked, .unlocked:
-			break
-		case .scanning:
-			GazeStatusBroadcast.scanStarted()
-		case .challenge(_, let symbol, let hintX, _, _, let isReturningToRest):
-			let movement: GazeStatusBroadcast.Movement? = switch symbol {
-			case _ where isReturningToRest: nil
-			case "arrowshape.left.fill": .turnLeft
-			case "arrowshape.right.fill": .turnRight
-			case "arrowshape.down.fill": .nod
-			case "mouth.fill": .openMouth
-			case "eye.fill": hintX == 0 ? .blink : .followLight
-			default: nil
-			}
-			if let movement { GazeStatusBroadcast.challenge(movement) } else { GazeStatusBroadcast.scanStarted() }
-		case .pending, .success:
-			GazeStatusBroadcast.recognised()
-		case .notRecognised:
-			GazeStatusBroadcast.notRecognised()
-		case .spoofRejected:
-			GazeStatusBroadcast.spoofRejected()
-		case .unavailable(let message):
-			// Codes, not the sentence: the sentences are copy and may change.
-			let reason: GazeStatusBroadcast.Reason =
-				if message.contains("paused") { .paused }
-				else if message.contains("Too many") { .lockedOut }
-				else if message.contains("password changed") { .passwordChanged }
-				else if message.contains("camera") { .cameraNotResponding }
-				else if message.contains("check faces") { .recognitionUnavailable }
-				else if message.contains("type your password") { .passwordEntryFailed }
-				else { .other }
-			GazeStatusBroadcast.unavailable(reason)
-		}
 	}
 
 	/// The edge light follows the look prompts and nothing else: up while an
@@ -233,7 +192,6 @@ package final class NotchCapsuleController {
 
 	package func hide(after delay: TimeInterval = 0) {
 		LookTargetOverlay.shared.hide()
-		GazeStatusBroadcast.scanStopped()
 		dismissalTask?.cancel()
 		guard let window else { return }
 		dismissalTask = Task { [weak self, weak window] in
@@ -306,11 +264,10 @@ package final class NotchCapsuleController {
 
 		// Wider than the physical cutout on purpose.
 		//
-		// Matching the cutout exactly seemed right, but notch apps — Dynamic Lake among
-		// them — draw a wider bar over that area, and a panel at the true cutout width
+		// Matching the cutout exactly seemed right, but notch apps
+		// draw a wider bar over that area, and a panel at the true cutout width
 		// steps in narrower underneath it. The mismatch is what reads as wrong. This
 		// matches the island those apps present rather than the hardware behind it.
-		// Measured off Dynamic Lake's own panel: ~280pt across on a 179pt cutout.
 		let notchWidth = (NotchMetrics.width(on: screen) ?? 180) * 1.56
 			+ Preferences.shared.notchWidthAdjust
 
@@ -395,7 +352,7 @@ package final class NotchCapsuleController {
 		// Above the fullscreen staging window (LockScreenShoot at .screenSaver)
 		// and above other notch apps, not below them.
 		//
-		// This was `.mainMenu + 2` — level 26 — while Dynamic Lake draws its bar at 104. On
+		// This was `.mainMenu + 2` — level 26 — while other notch apps draw their bar at 104. On
 		// the lock screen that put their bar over ours, which was survivable for the attached
 		// panel and the island because both hang *below* the band and the part underneath
 		// still showed. In ear mode nothing hangs below: the padlock and the mark both live

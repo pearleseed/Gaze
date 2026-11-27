@@ -46,13 +46,6 @@ struct SettingsBehaviourSection: View {
 				detail: "Open Gaze from Spotlight or Finder when it’s hidden",
 				symbol: "menubar.rectangle",
 				isOn: $settings.showsMenuBarIcon)
-
-			RowDivider()
-			SettingToggle(
-				title: "Share status with other apps",
-				detail: "Lets apps like DynamicLake show when Gaze is scanning or unlocking. Never shares your face or password.",
-				symbol: "dot.radiowaves.left.and.right",
-				isOn: $settings.broadcastStatus)
 		}
 	}
 

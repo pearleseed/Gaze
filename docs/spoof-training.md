@@ -34,8 +34,8 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
     --sessions ~/Documents/GazeDataset \
     --frames ~/Developer/Gaze-dev-archive/build-old-20260926/model-lab-20260913/dataset-expanded \
     --work /tmp/spoof-work \
-    --out outputs/spoof-models/Spoof-classifier.mlmodel \
-    --metrics outputs/spoof-models/metrics.json \
+    --out /tmp/spoof-work/Spoof-classifier.mlmodel \
+    --metrics docs/spoof-model/metrics.json \
     --old Resources/Spoof.mlmodel
 ```
 
@@ -45,4 +45,4 @@ The metrics JSON has spoof recall and live false-reject rate at every threshold 
 
 ## Ship
 
-Replace `Resources/Spoof.mlmodel` only when the new model catches more spoofs at the same or a lower live false-reject rate on both held-out sets. Move the threshold in `AntiSpoofGate` to the point that holds that, and update the table above it. Keep old models in `outputs/spoof-models/`, not in `Resources/`.
+Replace `Resources/Spoof.mlmodel` only when the new model catches more spoofs at the same or a lower live false-reject rate on both held-out sets. Move the threshold in `AntiSpoofGate` to the point that holds that, and update the table above it. Copy the new metrics JSON to `docs/spoof-model/metrics.json`. Don't keep old models in the repo or in `Resources/`; the git history has them.

@@ -7,8 +7,6 @@ public enum AppIdentity {
 	public static let appGroupIdentifier = "group.com.pearleseed.Gaze"
 	public static let keychainService = "com.pearleseed.Gaze"
 	public static let loggerSubsystem = "com.pearleseed.Gaze"
-	public static let statusNotificationPrefix = "com.pearleseed.Gaze.status."
-	public static let stateNotificationName = "com.pearleseed.Gaze.state"
 	public static let pendingSettingsPaneKey = "com.pearleseed.Gaze.pendingSettingsPane"
 	public static let urlScheme = "gaze"
 	public static let repositorySlug = "pearleseed/Gaze"

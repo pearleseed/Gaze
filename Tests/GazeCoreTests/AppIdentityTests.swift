@@ -10,8 +10,6 @@ struct AppIdentityTests {
 		#expect(AppIdentity.appGroupIdentifier == "group.com.pearleseed.Gaze")
 		#expect(AppIdentity.keychainService == "com.pearleseed.Gaze")
 		#expect(AppIdentity.loggerSubsystem == "com.pearleseed.Gaze")
-		#expect(AppIdentity.statusNotificationPrefix == "com.pearleseed.Gaze.status.")
-		#expect(AppIdentity.stateNotificationName == "com.pearleseed.Gaze.state")
 		#expect(AppIdentity.pendingSettingsPaneKey == "com.pearleseed.Gaze.pendingSettingsPane")
 		#expect(AppIdentity.urlScheme == "gaze")
 	}
@@ -30,8 +28,6 @@ struct AppIdentityTests {
 			AppIdentity.appGroupIdentifier,
 			AppIdentity.keychainService,
 			AppIdentity.loggerSubsystem,
-			AppIdentity.statusNotificationPrefix,
-			AppIdentity.stateNotificationName,
 			AppIdentity.pendingSettingsPaneKey,
 			AppIdentity.urlScheme,
 			AppIdentity.repositorySlug,

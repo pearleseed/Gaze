@@ -18,7 +18,7 @@ struct SettingsCreditsPane: View {
 			// One glyph per row, not the app's name on a capsule.
 			//
 			// Each of these was a filled button labelled with the app it opens — "Sapphire",
-			// "DynamicLake", "Atoll" — which went wrong twice over. The name was already the
+			// "Atoll" — which went wrong twice over. The name was already the
 			// first word of the row's own subtitle, so the button restated it; and because
 			// the three names are different lengths, the three capsules were different
 			// widths, leaving a ragged right edge down a group whose rows are otherwise
@@ -62,16 +62,6 @@ struct SettingsCreditsPane: View {
 					app: .init(
 						name: "Sapphire", what: "The notch, reimagined.",
 						icon: "app-sapphire", href: "https://sapphire-app.tech/"))
-
-				RowDivider()
-				creditRow(
-					name: "Aviorrok",
-					detail: "The notch panel and this window both follow its lead",
-					symbol: "macbook",
-					link: nil, linkName: nil,
-					app: .init(
-						name: "DynamicLake", what: "Dynamic Island for Mac.",
-						icon: "app-dynamiclake", href: "https://dynamiclake.com"))
 
 				RowDivider()
 				creditRow(

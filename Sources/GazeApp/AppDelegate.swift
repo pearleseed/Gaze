@@ -59,7 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		StartupTiming.measure(label: "tamper-guard") { TamperGuard.shared.start() }
 		StartupTiming.measure(label: "unlock-triggers") { AppServices.shared.startUnlockTrigger() }
 		StartupTiming.measure(label: "app-lock") { AppServices.shared.syncAppLock() }
-		GazeStatusBroadcast.start { Preferences.shared.broadcastStatus }
 		// Looks for a new release shortly after launch, then daily. See
 		// `startScheduledChecks` for why this is not left to the button in Settings.
 		StartupTiming.measure(label: "update-scheduling") { ReleaseUpdateChecker.shared.startScheduledChecks() }

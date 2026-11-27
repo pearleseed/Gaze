@@ -238,14 +238,12 @@ internal final class LockAttemptTelemetry {
 		let milliseconds = elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000
 		LockWatcher.logger.notice("First fresh camera frame ready after \(milliseconds)ms; analyzed=\(camera.analyzedFrames) expired=\(camera.expiredFrames).")
 		updateCapsule("scanning", .scanning)
-		StateBroadcast.post(.detecting)
 		shownAt = Date()
 	}
 
 	func recordCooldownEnded() {
 		report(.scanning)
 		updateCapsule("scanning", .scanning)
-		StateBroadcast.post(.detecting)
 	}
 
 	func recordFaceAndCandidateMetrics(_ candidates: [FaceSample]) {
@@ -285,7 +283,6 @@ internal final class LockAttemptTelemetry {
 		report(.scanning)
 		updateCapsule("retry", .challenge(prompt: "Face the camera to retry", symbol: "viewfinder",
 			hintX: 0, hintY: 0, pulses: false))
-		StateBroadcast.post(.detecting)
 		LockWatcher.logger.notice("Movement guidance withdrawn; reacquiring face. reason=\(reason, privacy: .public)")
 	}
 
@@ -363,7 +360,7 @@ internal final class LockAttemptTelemetry {
 		LockWatcher.logger.notice("Match rejected by anti-spoof: \(reason, privacy: .public) (\(String(format: "%.3f", score), privacy: .public)).")
 		recordAttemptRejection(diagnostic: .spoofRejected, result: .spoofRejected,
 			reason: .photoOrScreen, photo: photo, countsTowardLockout: true,
-			broadcastScore: Double(score), capsuleName: "spoofRejected", capsulePhase: .spoofRejected)
+			capsuleName: "spoofRejected", capsulePhase: .spoofRejected)
 	}
 
 	private func recordAttemptRejection(
@@ -373,7 +370,6 @@ internal final class LockAttemptTelemetry {
 		photo: CVPixelBuffer?,
 		steps: UnlockAttempt.Steps? = nil,
 		countsTowardLockout: Bool,
-		broadcastScore: Double? = nil,
 		capsuleName: String,
 		capsulePhase: NotchCapsuleModel.Phase
 	) {
@@ -389,12 +385,6 @@ internal final class LockAttemptTelemetry {
 			consecutiveFailures: watcher.lockout.consecutiveFailures,
 			attemptsRemaining: watcher.lockout.attemptsRemaining)
 		recordedAttempt = true
-		let state: GazeState = watcher.lockout.isLockedOut ? .lockedOut : .failed
-		if let broadcastScore {
-			StateBroadcast.post(state, score: broadcastScore)
-		} else {
-			StateBroadcast.post(state)
-		}
 		updateCapsule(capsuleName, capsulePhase)
 	}
 
@@ -408,7 +398,6 @@ internal final class LockAttemptTelemetry {
 		report(.submissionStopped)
 		watcher.didSubmitPassword = false
 		// The face matched; typing failed. Not a failed face, so not counted.
-		StateBroadcast.post(.failed)
 		updateCapsule("unavailable", .unavailable("Couldn’t type your password. Use it to unlock."))
 		LockWatcher.logger.error("Unlock failed: \(error.localizedDescription)")
 	}
@@ -464,7 +453,6 @@ internal final class LockAttemptTelemetry {
 				consecutiveFailures: watcher.lockout.consecutiveFailures,
 				attemptsRemaining: watcher.lockout.attemptsRemaining, endReason: "gave-up")
 		}
-		StateBroadcast.post(watcher.lockout.isLockedOut ? .lockedOut : .idle)
 
 		// Back to the padlock rather than vanishing — the Mac is still locked, and the
 		// indicator should keep saying so.

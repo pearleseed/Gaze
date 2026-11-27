@@ -222,7 +222,6 @@ package final class Preferences {
 		static let showNotchCaptions = "showNotchCaptions"
 		static let notchHeightAdjust = "notchHeightAdjust"
 		static let notchWidthAdjust = "notchWidthAdjust"
-		static let broadcastStatus = "broadcastStatus"
 		static let touchIDFallback = "touchIDFallback"
 		static let tamperProtection = "tamperProtection"
 		static let requireBuiltInCamera = "requireBuiltInCamera"
@@ -531,15 +530,6 @@ package final class Preferences {
 		didSet { defaults.set(notchWidthAdjust, forKey: Key.notchWidthAdjust) }
 	}
 
-	/// Publishes Gaze's status feed (`GazeStatusBroadcast`) for apps like DynamicLake.
-	/// Off by default: distributed notifications are readable by every process on the Mac.
-	package var broadcastStatus: Bool {
-		didSet {
-			defaults.set(broadcastStatus, forKey: Key.broadcastStatus)
-			if broadcastStatus, !oldValue { GazeStatusBroadcast.hello() }
-		}
-	}
-
 	private convenience init() {
 		self.init(defaults: .standard)
 	}
@@ -610,7 +600,6 @@ package final class Preferences {
 		}
 		notchHeightAdjust = defaults.double(forKey: Key.notchHeightAdjust)
 		notchWidthAdjust = defaults.double(forKey: Key.notchWidthAdjust)
-		broadcastStatus = defaults.bool(forKey: Key.broadcastStatus)
 	}
 }
 

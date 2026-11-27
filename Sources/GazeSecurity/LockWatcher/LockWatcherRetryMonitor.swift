@@ -57,7 +57,6 @@ extension LockWatcher {
 		}
 		guard lockout.mayAttempt() else {
 			Self.logger.notice("\(trigger, privacy: .public) while locked out; not looking.")
-			StateBroadcast.post(.lockedOut)
 			explainStandDown("Too many tries. Unlock with your password.")
 			return
 		}
@@ -76,11 +75,6 @@ extension LockWatcher {
 		pendingLearnedPrint = nil
 		capsule.show(phase: .locked)
 		startUnlockWatchdog()
-		// Every broadcast below is posted beside the capsule update that shows the same
-		// thing, so the panel and any subscriber can never disagree about the state.
-		StateBroadcast.reset()
-		StateBroadcast.post(.locked)
-		GazeStatusBroadcast.screenLocked()
 
 		let identifier = UUID()
 		attemptID = identifier
@@ -265,7 +259,6 @@ extension LockWatcher {
 							StalePasswordNotice.post()
 							Self.logger.error("The saved password no longer matches this account; Gaze stops typing it until a new one is saved.")
 						}
-						StateBroadcast.post(self.lockout.isLockedOut ? .lockedOut : .failed)
 					}
 				}
 			}

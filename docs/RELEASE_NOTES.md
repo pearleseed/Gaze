@@ -89,9 +89,6 @@ deepinsight, for [InsightFace's ArcFace](https://github.com/deepinsight/insightf
 the recognition model this app matches faces with (first obtained via Sapphire,
 which bundles the same model).
 
-Aviorrok, for [DynamicLake](https://dynamiclake.com) — the notch panel and the settings window
-both follow its lead.
-
 DanFQ, for [Atoll](https://getatoll.app), and for reading this code more carefully than I did.
 
 Everyone in the Discord who looked at early screenshots and said what was wrong with them. A

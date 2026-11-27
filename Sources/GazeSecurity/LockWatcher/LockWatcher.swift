@@ -384,8 +384,6 @@ package final class LockWatcher {
 				}
 			} else if !Self.screenIsLocked() {
 				Self.logger.notice("Unlocked into a session Gaze cannot verify; hiding the panel.")
-				StateBroadcast.post(.idle)
-				GazeStatusBroadcast.screenUnlocked(by: .other)
 				isLocked = false
 				spaceMonitor.stop()
 				submissionID = nil
@@ -415,8 +413,6 @@ package final class LockWatcher {
 		submissionID = nil
 		isLocked = false
 		spaceMonitor.stop()
-		StateBroadcast.post(.idle)
-		GazeStatusBroadcast.screenUnlocked(by: didSubmitPassword ? .gaze : .other)
 		// Whatever unlocked the Mac, we are done. Cancelling releases the camera promptly
 		// rather than leaving the indicator lit after the user has typed their password.
 		attempt?.cancel()
@@ -454,7 +450,6 @@ package final class LockWatcher {
 			store.learn(pending.print, for: pending.faceID)
 		}
 		pendingLearnedPrint = nil
-		StateBroadcast.post(.succeeded)
 
 		// The Mac agreed. Retract to the resting bar and let the padlock open there, which
 		// is the last beat of the sequence and the only one the user is still looking at.

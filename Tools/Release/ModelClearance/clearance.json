@@ -103,10 +103,10 @@
         ]
       },
       "provenance": {
-        "summary": "Trained locally on 2026-10-05 with Tools/Scripts/train-spoof-classifier.swift (Create ML image classifier, Apple scenePrint v2 feature extractor, logistic regression) on face crops cut with Vision the same way the app's contextCrop does, from the Roboflow 'Face Spoof Detection' export (person-grouped live/spoof split) plus the owner's own capture sessions from Gaze's dataset capture tool (~/Documents/GazeDataset, the owner's own face). Held-out evaluation and threshold sweep in outputs/spoof-models/metrics.json; the previous detector is kept at outputs/spoof-models/Spoof-detector-old.mlmodel. Owner confirms (2026-10-05) shipping this model in the bundled app, including what it learned from the owner's own face captures. Previous model: Trained locally with scripts/train_spoof.swift (CreateML transfer learning, Apple ObjectPrint extractor; input contract scripts/train_spoof.swift:1-12, metadata author 'Gaze' version '1.0' scripts/train_spoof.swift:53-57) from the Roboflow 'Face Spoof Detection' CreateML export (train/valid/test splits, _annotations.createml.json per split). Training-data copy is git-ignored (.gitignore:27-28,30-32), not in the repo. Consumed at Sources/Recognition/SpoofDetector.swift:6-10 and bundled via build.sh:114-124. Owner confirms (2026-09-20) they trained Resources/Spoof.mlmodel themselves by running scripts/train_spoof.swift against that export. The shipped bytes bind to the script directly: Resources/Spoof.mlmodel embeds author 'Gaze' and the shortDescription 'Face-spoof object detector (Roboflow Face Spoof Detection, CC BY 4.0).' character-for-character as written at scripts/train_spoof.swift:53-57, alongside com.apple.createml.version markers. Verified 2026-09-20 by reading the model's metadata block. No training log exists; this metadata match is the stronger record.",
+        "summary": "Trained locally on 2026-10-05 with Tools/Scripts/train-spoof-classifier.swift (Create ML image classifier, Apple scenePrint v2 feature extractor, logistic regression) on face crops cut with Vision the same way the app's contextCrop does, from the Roboflow 'Face Spoof Detection' export (person-grouped live/spoof split) plus the owner's own capture sessions from Gaze's dataset capture tool (~/Documents/GazeDataset, the owner's own face). Held-out evaluation and threshold sweep in docs/spoof-model/metrics.json; the previous detector is no longer kept in the repo (see git history). Owner confirms (2026-10-05) shipping this model in the bundled app, including what it learned from the owner's own face captures. Previous model: Trained locally with scripts/train_spoof.swift (CreateML transfer learning, Apple ObjectPrint extractor; input contract scripts/train_spoof.swift:1-12, metadata author 'Gaze' version '1.0' scripts/train_spoof.swift:53-57) from the Roboflow 'Face Spoof Detection' CreateML export (train/valid/test splits, _annotations.createml.json per split). Training-data copy is git-ignored (.gitignore:27-28,30-32), not in the repo. Consumed at Sources/Recognition/SpoofDetector.swift:6-10 and bundled via build.sh:114-124. Owner confirms (2026-09-20) they trained Resources/Spoof.mlmodel themselves by running scripts/train_spoof.swift against that export. The shipped bytes bind to the script directly: Resources/Spoof.mlmodel embeds author 'Gaze' and the shortDescription 'Face-spoof object detector (Roboflow Face Spoof Detection, CC BY 4.0).' character-for-character as written at scripts/train_spoof.swift:53-57, alongside com.apple.createml.version markers. Verified 2026-09-20 by reading the model's metadata block. No training log exists; this metadata match is the stronger record.",
         "evidenceRefs": [
           "Tools/Scripts/train-spoof-classifier.swift",
-          "outputs/spoof-models/metrics.json",
+          "docs/spoof-model/metrics.json",
           "docs/spoof-training.md",
           "Owner confirmation, release session 2026-10-05: ship the new classifier, including the owner's own face captures",
           "scripts/train_spoof.swift:1-12,53-57",
@@ -287,11 +287,6 @@
             "path": "Resources/Credits/app-boringnotch.png",
             "bytes": 52955,
             "sha256": "a90cff70803f4008703866e08edfb737bcef94603ff3680ededf6428b20933bc"
-          },
-          {
-            "path": "Resources/Credits/app-dynamiclake.png",
-            "bytes": 23370,
-            "sha256": "a7bf6a5bc51f9c6987ce9ad25b98ab173fb2328516312c89baf9c796ad279527"
           },
           {
             "path": "Resources/Credits/app-sapphire.png",

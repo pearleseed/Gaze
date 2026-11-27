@@ -87,7 +87,7 @@ Gaze is organized as a Swift 6 multi-module Swift Package (`Package.swift`) link
 
 | Module / Component | Responsibility |
 |---|---|
-| `GazeCore` | `AppIdentity`, preferences, Secure Enclave vault/Keychain, App Lock state store, broadcasts |
+| `GazeCore` | `AppIdentity`, preferences, Secure Enclave vault/Keychain, App Lock state store |
 | `GazeDesign` | Theme, typography, Liquid Glass controls, companion Metal renderer |
 | `GazeTourKit` | Vendored onboarding tour UI |
 | `GazeCamera` | Camera pinning, frame leases, continuity tracking, bounded backpressure, presence-only mode |
@@ -100,6 +100,6 @@ Gaze is organized as a Swift 6 multi-module Swift Package (`Package.swift`) link
 
 ## Acknowledgments & License
 
-Gaze builds on open-source software and research including [InsightFace](https://github.com/deepinsight/insightface), [Sapphire](https://sapphire-app.tech), [MediaPipe Iris](https://github.com/google-ai-edge/mediapipe), [TourKit](https://github.com/rampatra/TourKit), [Atoll](https://github.com/Ebullioscopic/Atoll), [SkyLightWindow](https://github.com/Lakr233/SkyLightWindow), [Glance](https://github.com/jonnyoo/glance), [DynamicLake](https://dynamiclake.com), and the [Face Spoof Detection](https://universe.roboflow.com/mohammeds-workspace-ft3sn/face-spoof-detection-liika) dataset.
+Gaze builds on open-source software and research including [InsightFace](https://github.com/deepinsight/insightface), [Sapphire](https://sapphire-app.tech), [MediaPipe Iris](https://github.com/google-ai-edge/mediapipe), [TourKit](https://github.com/rampatra/TourKit), [Atoll](https://github.com/Ebullioscopic/Atoll), [SkyLightWindow](https://github.com/Lakr233/SkyLightWindow), [Glance](https://github.com/jonnyoo/glance), and the [Face Spoof Detection](https://universe.roboflow.com/mohammeds-workspace-ft3sn/face-spoof-detection-liika) dataset.
 
 <sub>Available under the [MIT License](LICENSE). Third-party code, models, and dataset terms are documented in [NOTICE.md](NOTICE.md). Gaze is not affiliated with Apple. Face ID, iPhone, and Mac are trademarks of Apple Inc.</sub>
