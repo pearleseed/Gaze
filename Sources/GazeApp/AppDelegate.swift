@@ -59,9 +59,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		StartupTiming.measure(label: "tamper-guard") { TamperGuard.shared.start() }
 		StartupTiming.measure(label: "unlock-triggers") { AppServices.shared.startUnlockTrigger() }
 		StartupTiming.measure(label: "app-lock") { AppServices.shared.syncAppLock() }
-		// Looks for a new release shortly after launch, then daily. See
-		// `startScheduledChecks` for why this is not left to the button in Settings.
-		StartupTiming.measure(label: "update-scheduling") { ReleaseUpdateChecker.shared.startScheduledChecks() }
+		// Sparkle 2 updater: checks the architecture-matched appcast with EdDSA verification.
+		AppUpdater.shared.onWillRelaunch = { TamperGuard.shared.prepareForAuthorizedUpdateRelaunch() }
+		if AppServices.executionPolicy == .normal {
+			StartupTiming.measure(label: "update-scheduling") { AppUpdater.shared.start() }
+		}
 		StartupTiming.measure(label: "screenshot-mode") { AppServices.shared.runLockScreenShootIfRequested() }
 		AppServices.shared.runAppLockPreviewIfRequested()
 		StartupTiming.measure(label: "invisible-window-sweep") { self.startInvisibleWindowSweep() }

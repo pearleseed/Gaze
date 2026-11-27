@@ -38,7 +38,7 @@ if [ -f "$PLIST" ]; then
 	test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST" 2>/dev/null)" = "$BUNDLE_ID" \
 		&& ok "source bundle identifier $BUNDLE_ID" \
 		|| missing "Resources/Info.plist CFBundleIdentifier is not $BUNDLE_ID"
-	for key in CFBundleExecutable CFBundleName CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion NSCameraUsageDescription; do
+	for key in CFBundleExecutable CFBundleName CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion NSCameraUsageDescription SUFeedURL SUPublicEDKey; do
 		/usr/libexec/PlistBuddy -c "Print :$key" "$PLIST" >/dev/null 2>&1 \
 			&& ok "source Info.plist key $key" \
 			|| missing "Resources/Info.plist key $key is absent"

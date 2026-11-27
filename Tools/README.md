@@ -34,7 +34,7 @@ See [NOTICE.md](../NOTICE.md) for model sources and redistribution terms.
 
 Run `bash Tools/Release/preflight.sh` to check the release prerequisites.
 Build each target separately:
-- By default (`GAZE_REQUIRE_DEVELOPER_ID=0`), `DIST=1` signs with **Developer ID Application** if installed, and otherwise signs **ad-hoc (`-`)** with Hardened Runtime instead of falling back to a personal `Apple Development` certificate — so release bundles stay portable across Macs, never expire, do not embed a personal developer email, and stay compatible with `UpdateInstaller`'s ad-hoc verification.
+- By default (`GAZE_REQUIRE_DEVELOPER_ID=0`), `DIST=1` signs with **Developer ID Application** if installed, and otherwise signs **ad-hoc (`-`)** with Hardened Runtime instead of falling back to a personal `Apple Development` certificate — so release bundles stay portable across Macs, never expire, do not embed a personal developer email, and remain verifiable by Sparkle 2 via EdDSA (`SUPublicEDKey`).
 - Local builds (`./build.sh` without `DIST=1`) continue using your local `Apple Development` identity so Keychain and TCC permissions stay stable on your Mac.
 - Set `GAZE_REQUIRE_DEVELOPER_ID=1` to enforce a `Developer ID Application` signature for notarized releases (or pass `GAZE_SIGNING_IDENTITY=<id>` to override explicitly).
 
@@ -59,3 +59,9 @@ Package each verified app with `Release/DMG/package.py` (`--arch arm64` or `--ar
 The images are named `Gaze-<version>-<build>-arm64.dmg` and
 `Gaze-<version>-<build>-x86_64.dmg` in `build/installers/`. Notarize and staple
 the images for distribution when using `--notary-profile`.
+
+Generate and verify the Sparkle 2 EdDSA-signed appcast feeds (`appcast-arm64.xml` and `appcast-x86_64.xml`) before uploading the GitHub Release:
+
+```sh
+bash Tools/Release/generate-appcast.sh --tag v<version>
+```

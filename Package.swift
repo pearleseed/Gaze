@@ -18,6 +18,9 @@ let package = Package(
 		.library(name: "GazeUpdates", targets: ["GazeUpdates"]),
 		.library(name: "GazeApp", targets: ["GazeApp"]),
 	],
+	dependencies: [
+		.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1"),
+	],
 	targets: [
 		.target(
 			name: "GazeCore",
@@ -56,7 +59,10 @@ let package = Package(
 		),
 		.target(
 			name: "GazeUpdates",
-			dependencies: ["GazeCore"],
+			dependencies: [
+				"GazeCore",
+				.product(name: "Sparkle", package: "Sparkle"),
+			],
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
 		.target(

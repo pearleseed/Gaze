@@ -1,22 +1,38 @@
+import Foundation
 import GazeApp
 import Testing
 
-@Suite("Settings Updates Card Visibility")
+@Suite("Settings Updates Status Copy")
 @MainActor
 struct SettingsUpdatesSectionTests {
-	@Test(arguments: [
-		(true, "", true),
-		(true, "   \n", true),
-		(false, "Fixed bug", true),
-		(false, "  ", false),
-		(false, "", false),
-		(true, "Fixed bug", true),
-	])
-	func showsReleaseCardCoversInstallableAndNotesCombinations(
-		isInstallOffered: Bool,
-		notes: String,
-		expected: Bool
-	) {
-		#expect(SettingsUpdatesSection.showsReleaseCard(isInstallOffered: isInstallOffered, notes: notes) == expected)
+	@Test func statusDetailPrioritizesAvailableVersionThenLastCheckThenDefault() {
+		let now = Date(timeIntervalSince1970: 1_700_000_000)
+		#expect(
+			SettingsUpdatesSection.statusDetail(
+				availableVersion: "0.2.0",
+				lastChecked: now.addingTimeInterval(-3600),
+				now: now
+			) == "Gaze 0.2.0 is available."
+		)
+		let recent = SettingsUpdatesSection.statusDetail(
+			availableVersion: nil,
+			lastChecked: now.addingTimeInterval(-120),
+			now: now
+		)
+		#expect(recent.hasPrefix("Last checked "))
+		#expect(
+			SettingsUpdatesSection.statusDetail(
+				availableVersion: nil,
+				lastChecked: nil,
+				now: now
+			) == "Check for new builds signed with Sparkle."
+		)
+		#expect(
+			SettingsUpdatesSection.statusDetail(
+				availableVersion: "",
+				lastChecked: nil,
+				now: now
+			) == "Check for new builds signed with Sparkle."
+		)
 	}
 }

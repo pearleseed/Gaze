@@ -8,7 +8,9 @@ BIN="$SCRATCH/bin"
 FINDER="$APP/Contents/PlugIns/GazeFinder.appex/Contents/MacOS/GazeFinder"
 PAM="$APP/Contents/Resources/pam_gaze.so"
 mkdir -p "$BIN" "$APP/Contents/MacOS" "$APP/Contents/Resources/FaceEmbedding.mlmodelc" \
-	"$APP/Contents/Resources/Spoof.mlmodelc" "$(dirname "$FINDER")"
+	"$APP/Contents/Resources/Spoof.mlmodelc" "$(dirname "$FINDER")" \
+	"$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+touch "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 set_architecture() {
@@ -90,6 +92,10 @@ check pass 'PASS: un-notarized bundle'
 check pass 'artifact validation, NOT proof'
 GAZE_TEST_FAILURE=authority check pass 'PASS: un-notarized bundle'
 GAZE_TEST_FAILURE=adhoc check pass 'PASS: un-notarized bundle'
+# Ad-hoc Hardened Runtime builds allow disable-library-validation solely to load Sparkle.framework.
+/usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$GAZE_TEST_ENTITLEMENTS"
+GAZE_TEST_FAILURE=adhoc check pass 'PASS: un-notarized bundle'
+/usr/libexec/PlistBuddy -c 'Delete :com.apple.security.cs.disable-library-validation' "$GAZE_TEST_ENTITLEMENTS"
 GAZE_TEST_FAILURE=stapler check pass 'PASS: un-notarized bundle'
 GAZE_TEST_FAILURE=gatekeeper check pass 'PASS: un-notarized bundle'
 GAZE_TEST_FAILURE=timestamp check pass 'PASS: un-notarized bundle'
@@ -154,9 +160,14 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 mv "$APP/Contents/PkgInfo" "$SCRATCH/PkgInfo"
 check fail 'Bundle PkgInfo missing'
 mv "$SCRATCH/PkgInfo" "$APP/Contents/PkgInfo"
-/usr/libexec/PlistBuddy -c 'Delete :NSCameraUsageDescription' "$APP/Contents/Info.plist"
-check fail 'Info.plist key NSCameraUsageDescription missing'
-cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+mv "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" "$SCRATCH/Sparkle"
+check fail 'Required Sparkle.framework missing'
+mv "$SCRATCH/Sparkle" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+for key in NSCameraUsageDescription SUFeedURL SUPublicEDKey; do
+	/usr/libexec/PlistBuddy -c "Delete :$key" "$APP/Contents/Info.plist"
+	check fail "Info.plist key $key missing"
+	cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+done
 for model in FaceEmbedding Spoof; do
 	mv "$APP/Contents/Resources/$model.mlmodelc" "$SCRATCH/$model.mlmodelc"
 	check fail "Required $model model missing"

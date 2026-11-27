@@ -136,10 +136,18 @@ BUILT_APP="$DERIVED_DATA/Build/Products/Release/Gaze.app"
 echo "→ Staging bundle"
 ditto --noextattr "$BUILT_APP" "$STAGE"
 rm -f "$STAGE/Contents/Resources/.models.stamp"
+if [ "${DIST:-}" = "1" ]; then
+	/usr/libexec/PlistBuddy -c "Set :SUFeedURL https://github.com/pearleseed/Gaze/releases/latest/download/appcast-$GAZE_ARCHS.xml" "$STAGE/Contents/Info.plist"
+fi
 xattr -cr "$STAGE" 2>/dev/null || true
 
 APPEX="$STAGE/Contents/PlugIns/GazeFinder.appex"
 PAM="$STAGE/Contents/Resources/pam_gaze.so"
+SPARKLE="$STAGE/Contents/Frameworks/Sparkle.framework"
+if [ ! -d "$SPARKLE" ]; then
+	echo "Sparkle.framework is missing from $STAGE/Contents/Frameworks." >&2
+	exit 1
+fi
 
 if [ "${DIST:-}" = "1" ] && [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
 	echo "→ Signing release with Developer ID"
@@ -153,14 +161,36 @@ fi
 
 gaze_codesign --force --sign "$IDENTITY" "$PAM"
 
+# Sparkle 2 must be signed inside-out without --deep so helper XPCs/tools keep valid boundaries.
+gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
+	"$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+gaze_codesign --force "${SIGNING_FLAGS[@]}" --preserve-metadata=entitlements --sign "$IDENTITY" \
+	"$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
+	"$SPARKLE/Versions/B/Autoupdate"
+gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
+	"$SPARKLE/Versions/B/Updater.app"
+gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
+	"$SPARKLE"
+
 gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
 	--entitlements "$ROOT/Sources/FinderExtension/GazeFinder.entitlements" \
 	--identifier com.pearleseed.Gaze.Finder "$APPEX"
 
 codesign --verify --strict "$APPEX"
 
+# Ad-hoc binaries have no Team ID, so AMFI Library Validation under Hardened Runtime
+# would reject loading Sparkle.framework. Add disable-library-validation ONLY for ad-hoc
+# signing; Developer ID and Apple Development builds keep strict Library Validation on.
+APP_ENTITLEMENTS="$ROOT/Resources/Gaze.entitlements"
+if [ "$IDENTITY" = "-" ]; then
+	APP_ENTITLEMENTS="$STAGE_ROOT/Gaze-adhoc.entitlements"
+	cp "$ROOT/Resources/Gaze.entitlements" "$APP_ENTITLEMENTS"
+	/usr/libexec/PlistBuddy -c 'Add :com.apple.security.cs.disable-library-validation bool true' "$APP_ENTITLEMENTS"
+fi
+
 gaze_codesign --force "${SIGNING_FLAGS[@]}" --sign "$IDENTITY" \
-	--entitlements "$ROOT/Resources/Gaze.entitlements" \
+	--entitlements "$APP_ENTITLEMENTS" \
 	--identifier com.pearleseed.Gaze "$STAGE"
 
 codesign --verify --deep --strict "$STAGE"

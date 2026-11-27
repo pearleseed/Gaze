@@ -7,8 +7,7 @@ import Observation
 /// state, so it leaves a request here and presents Settings through the closure a live view
 /// stored. SettingsView observes `pending`, selects the pane and reveals the section, then
 /// clears it. Deliberately free of app types (pane and section travel as strings, and the
-/// presentation closure is injected by a view) so the update tests can compile this
-/// alongside ReleaseUpdateChecker without the app scene.
+/// presentation closure is injected by a view) so tests can compile this without the app scene.
 @MainActor
 @Observable
 package final class SettingsNavigator {

@@ -3,6 +3,7 @@ import AVFoundation
 import GazeCore
 import GazeRecognition
 import GazeSecurity
+import GazeUpdates
 import Observation
 import SwiftUI
 
@@ -154,6 +155,7 @@ struct MenuBarContent: View {
 
 	@Environment(\.openWindow) private var openWindow
 	@State private var preferences = Preferences.shared
+	@State private var updater = AppUpdater.shared
 
 	private var statusSnapshot: MenuBarStatusSnapshot {
 		MenuBarStatusModel.evaluate(
@@ -228,6 +230,16 @@ struct MenuBarContent: View {
 		Button("Settings…") {
 			AppActivation.bringToFront(userInitiated: true)
 			openWindow(id: "settings")
+		}
+		if let version = updater.availableUpdateVersion {
+			Button("Update Available (v\(version))…") {
+				updater.checkForUpdates()
+			}
+		} else {
+			Button("Check for Updates…") {
+				updater.checkForUpdates()
+			}
+			.disabled(!updater.canCheckForUpdates)
 		}
 
 		Divider()

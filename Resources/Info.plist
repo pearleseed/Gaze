@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.14</string>
+	<string>0.1.15</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -30,7 +30,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>15</string>
+	<string>16</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
@@ -43,5 +43,15 @@
 	<false/>
 	<key>NSSystemAdministrationUsageDescription</key>
 	<string>Gaze needs administrator access to install or remove its sudo PAM rule in /etc/pam.d/sudo_local.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>CsEYrscutd2/TleEnwtEyszxRijAxyolgl8CQkwo4+4=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

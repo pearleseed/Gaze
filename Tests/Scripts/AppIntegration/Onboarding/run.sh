@@ -19,6 +19,7 @@ APP="$BUILD/Gaze Onboarding Review.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 xcrun swiftc -parse-as-library -swift-version 6 -warnings-as-errors -sdk "$GAZE_SDK" -target "$(host_target)" \
 	-I "$GAZE_SPM_BIN" -L "$GAZE_SPM_BIN" \
+	-F "$GAZE_SPARKLE_FRAMEWORK_DIR" -framework Sparkle -Xlinker -rpath -Xlinker "$GAZE_SPARKLE_FRAMEWORK_DIR" \
 	-lGazeApp -lGazeCore -lGazeDesign -lGazeTourKit -lGazeCamera \
 	-lGazeRecognition -lGazeLockScreen -lGazeSecurity -lGazeUpdates \
 	"$ROOT/Tests/Scripts/Support/CompanionCapture.swift" \

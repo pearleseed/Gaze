@@ -53,7 +53,7 @@ struct SettingsView: View {
 	}()
 	@State private var settings = Preferences.shared
 	@State private var updates = RepoRevealHelper.shared
-	@State private var releases = ReleaseUpdateChecker.shared
+	@State private var updater = AppUpdater.shared
 	@State private var navigator = SettingsNavigator.shared
 	/// Whether a password is stored, re-read whenever this window comes forward.
 	///
@@ -160,29 +160,20 @@ struct SettingsView: View {
 					.fixedSize()
 			}
 			ToolbarItem(placement: .navigation) {
-				if isUpdateBadgeVisible {
-					Group {
-						if releases.installer.state.isBusy {
-							ProgressView()
-								.progressViewStyle(.circular)
-								.controlSize(.small)
-						} else {
-							Button {
-								pane = .general
-								revealSettingsSection("updatesSection")
-							} label: {
-								Label("Update available", systemImage: "square.and.arrow.down")
-									.labelStyle(.iconOnly)
-							}
-							// A plain toolbar button: macOS sizes its glass like the pane
-							// icons beside it. Custom styles here stretched to the row height.
-							.foregroundStyle(.blue)
-							.help("Gaze \(availableDisplayVersion) is ready to install")
-							.accessibilityLabel("Update available")
-						}
+				if let version = updater.availableUpdateVersion {
+					Button {
+						updater.checkForUpdates()
+					} label: {
+						Label("Update available", systemImage: "square.and.arrow.down")
+							.labelStyle(.iconOnly)
 					}
+					// A plain toolbar button: macOS sizes its glass like the pane
+					// icons beside it. Custom styles here stretched to the row height.
+					.foregroundStyle(.blue)
+					.help("Gaze \(version) is ready to install")
+					.accessibilityLabel("Update available")
 					.transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
-					.animation(reduceMotion ? nil : Theme.Motion.quick, value: isUpdateBadgeVisible)
+					.animation(reduceMotion ? nil : Theme.Motion.quick, value: updater.availableUpdateVersion)
 				}
 			}
 		}
@@ -328,7 +319,7 @@ struct SettingsView: View {
 							highlightedSection: highlightedSection)
 					case .general:
 						// Updates first, so a waiting update is the first thing General shows.
-						SettingsUpdatesSection(updates: updates, releases: releases)
+						SettingsUpdatesSection(updates: updates, updater: updater)
 							.settingsDestination("updatesSection", highlightedSection: highlightedSection)
 						SettingsBehaviourSection(settings: settings, loginItem: $loginItem)
 							.settingsDestination("behaviourSection", highlightedSection: highlightedSection)
@@ -466,16 +457,6 @@ struct SettingsView: View {
 		navigator.pending = nil
 		if let destination = SettingsPane(rawValue: next.pane) { pane = destination }
 		revealSettingsSection(next.section)
-	}
-
-	private var isUpdateBadgeVisible: Bool {
-		if case .available = releases.state { return true }
-		return false
-	}
-
-	private var availableDisplayVersion: String {
-		guard case .available(let release) = releases.state else { return "" }
-		return ReleaseUpdateChecker.displayVersion(for: release.tag)
 	}
 
 	private var onboardingSection: some View {

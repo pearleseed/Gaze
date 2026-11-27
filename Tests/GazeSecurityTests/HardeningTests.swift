@@ -291,44 +291,30 @@ struct HardeningTests {
 		#expect(!reversedTimeHold)
 	}
 
-	@Test func releaseURLPolicyAndSessionConfigurationHardening() {
-		for value in [
-			"https://github.com/pearleseed/Gaze/releases/download/v1.2.3/Gaze-1.2.3-1-arm64.dmg",
-			"https://github.com:443/pearleseed/Gaze/releases/download/v1.2.3/Gaze.dmg",
-			"https://release-assets.githubusercontent.com/github-production-release-asset/123/Gaze.dmg",
-			"https://objects.githubusercontent.com/github-production-release-asset/123",
-		] {
-			#expect(ReleaseURLPolicy.download(value) != nil)
+	@Test func sparkleFeedURLHardening() {
+		for arch in ["arm64", "x86_64"] {
+			let feed = AppUpdater.feedURL(for: arch)
+			#expect(AppUpdater.isTrustedFeedURL(feed))
 		}
 
 		for value in [
-			"http://github.com/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
-			"https://gazeunlock.com/releases",
+			"http://github.com/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml",
+			"https://gazeunlock.com/appcast.xml",
 			"file:///Applications/Other.app",
 			"javascript:alert(1)",
 			"x-apple.systempreferences:privacy",
-			"https://github.com.attacker.test/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
-			"https://attacker.test/github.com/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
+			"https://github.com.attacker.test/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml",
+			"https://attacker.test/github.com/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml",
 			"https://github.com@attacker.test/file",
-			"https://user:pass@github.com/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
-			"https://github.com:444/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
-			"https://github.com/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg#fragment",
-			"//github.com/pearleseed/Gaze/releases/download/v1.0.0/Gaze.dmg",
-			"https://127.0.0.1/file",
+			"https://user:pass@github.com/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml",
+			"https://github.com:444/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml",
+			"https://github.com/pearleseed/Gaze/releases/latest/download/appcast-arm64.xml#fragment",
+			"https://127.0.0.1/appcast-arm64.xml",
 		] {
-			#expect(ReleaseURLPolicy.download(value) == nil)
+			if let url = URL(string: value) {
+				#expect(!AppUpdater.isTrustedFeedURL(url))
+			}
 		}
-
-		#expect(ReleaseURLPolicy.download(nil) == nil)
-		#expect(
-			ReleaseURLPolicy.download(
-				"https://github.com/pearleseed/Gaze/releases/download/v1.0.0/" + String(repeating: "a", count: 4096)
-			) == nil
-		)
-
-		let configuration = ReleaseURLPolicy.sessionConfiguration()
-		#expect(configuration.urlCredentialStorage == nil && configuration.httpCookieStorage == nil)
-		#expect(configuration.timeoutIntervalForResource == 20 && configuration.urlCache == nil)
 	}
 
 	@Test func antiSpoofGateFailsClosedOnInvalidOrUnavailableScores() throws {

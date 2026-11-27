@@ -22,13 +22,13 @@ mkdir -p "$APP/Contents/MacOS"
 python3 "$ROOT/Tests/Scripts/AppIntegration/SettingsInteraction/generate.py" "$OUTPUT/CaptureFixture.swift"
 xcrun swiftc -parse-as-library -swift-version 6 -package-name "$GAZE_PACKAGE_NAME" -sdk "$GAZE_SDK" -target "$(host_target)" \
 	-I "$GAZE_SPM_BIN" -L "$GAZE_SPM_BIN" \
+	-F "$GAZE_SPARKLE_FRAMEWORK_DIR" -framework Sparkle -Xlinker -rpath -Xlinker "$GAZE_SPARKLE_FRAMEWORK_DIR" \
 	-lGazeCore -lGazeDesign -lGazeTourKit -lGazeCamera \
 	-lGazeRecognition -lGazeSecurity -lGazeUpdates \
 	"$ROOT/Sources/GazeApp/Settings/SettingsBehaviourSection.swift" \
 	"$ROOT/Sources/GazeApp/Settings/SettingsUpdatesSection.swift" \
 	"$ROOT/Sources/GazeApp/Settings/SettingsSourceBuildSection.swift" \
 	"$ROOT/Sources/GazeApp/Setup/SetupScaffold.swift" \
-	"$ROOT/Sources/GazeApp/ReleaseNotesView.swift" \
 	"$ROOT/Sources/GazeApp/Setup/SetupAccessibilityDemo.swift" \
 	"$ROOT/Sources/GazeApp/Setup/SetupShot.swift" \
 	"$ROOT/Sources/GazeApp/Setup/SetupControls.swift" \

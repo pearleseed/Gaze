@@ -52,35 +52,15 @@ typealias RepoRevealHelper = UpdateChecker
     func revealRepository() { revealCount += 1 }
 }
 
-@Observable @MainActor final class ReleaseUpdateChecker {
-    static let shared = ReleaseUpdateChecker()
-    struct Release: Equatable {
-        let tag: String
-        let name: String
-        let notes: String
-        var downloadURL: URL? = URL(string: "https://github.com/pearleseed/Gaze/releases/download/v1.3.0/Gaze-1.3.0-1-arm64.dmg")
-        var isInstallable: Bool { downloadURL != nil }
-    }
-    enum State: Equatable {
-        case idle, checking, upToDate, available(Release), failed(String)
-    }
-    var state = State.idle
-    var isRechecking = false
+@Observable @MainActor final class AppUpdater {
+    static let shared = AppUpdater()
+    var canCheckForUpdates = true
+    var availableUpdateVersion: String?
+    var lastUpdateCheckDate: Date?
+    var automaticallyChecksForUpdates = true
+    var automaticallyDownloadsUpdates = false
     var checkCount = 0
-    var downloadCount = 0
-    func check() async { checkCount += 1; state = .upToDate }
-    func openDownload() { downloadCount += 1 }
-    let installer = UpdateInstaller()
-    var installCount = 0
-    func install() { installCount += 1 }
-}
-
-@Observable @MainActor final class UpdateInstaller {
-    enum State: Equatable {
-        case idle, downloading(fraction: Double), installing, failed(String)
-    }
-    var state = State.idle
-    var isRechecking = false
+    func checkForUpdates() { checkCount += 1 }
 }
 
 /// The camera-access figure draws the Metal companion; the fixture only needs its layout.

@@ -4,8 +4,7 @@ import Foundation
 /// Repo-reveal helper for the Settings About row, not an updater.
 ///
 /// Despite the legacy name, this type never checks for updates: it only reports the running
-/// version and reveals the checkout's source folder. Release checks live in
-/// `ReleaseUpdateChecker`.
+/// version and reveals the checkout's source folder. Software updates live in `AppUpdater`.
 @MainActor
 package final class RepoRevealHelper {
 	package static let shared = RepoRevealHelper()

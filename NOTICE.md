@@ -75,6 +75,14 @@ are verbatim copies of upstream `Sources/TourKit/TourKit.swift` and `LICENSE` �
 module directly (no separate TourKit module), and the licence ships in the bundle as
 `Contents/Resources/TourKit-LICENSE.txt`.
 
+### Sparkle
+
+Software update framework for macOS by the **Sparkle Project**:
+
+<https://github.com/sparkle-project/Sparkle> — MIT licence, © 2006–2026 Sparkle Project contributors
+
+Resolved via Swift Package Manager (`Sparkle` 2.x) and embedded as `Contents/Frameworks/Sparkle.framework`. Verifies updates with EdDSA (Ed25519) signatures prior to extraction.
+
 ## Model and asset redistribution status
 
 ### The recognition model

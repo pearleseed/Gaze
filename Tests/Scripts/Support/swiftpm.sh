@@ -28,5 +28,15 @@ gaze_swiftpm_setup() {
 		GAZE_SDK="$(xcrun --sdk macosx --show-sdk-path)" || return 1
 	fi
 	[ -n "$GAZE_SPM_BIN" ] && [ -n "$GAZE_PACKAGE_NAME" ] && [ -n "$GAZE_SDK" ] || return 1
-	export GAZE_SPM_BIN GAZE_PACKAGE_NAME GAZE_SDK
+	GAZE_SPARKLE_FRAMEWORK_DIR=""
+	for candidate in \
+		"$GAZE_SPM_BIN" \
+		"$root/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64" \
+		"$root/build/sparkle-tools"; do
+		if [ -d "$candidate/Sparkle.framework" ]; then
+			GAZE_SPARKLE_FRAMEWORK_DIR="$candidate"
+			break
+		fi
+	done
+	export GAZE_SPM_BIN GAZE_PACKAGE_NAME GAZE_SDK GAZE_SPARKLE_FRAMEWORK_DIR
 }

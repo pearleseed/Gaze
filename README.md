@@ -30,7 +30,7 @@
 - **Liveness & anti-spoofing:** Rejects photos and screens with on-device anti-spoof detection and optional head-movement or gaze challenges.
 - **Walk-away lock:** Locks your Mac automatically when you step away, using lightweight rectangles-only presence detection.
 - **App Lock, `sudo` PAM & admin prompts:** Lock selected apps (with a Finder extension) and approve `sudo` or Apple administrator dialogs with your face.
-- **GitHub Releases self-updating:** Checks `pearleseed/Gaze` releases with mandatory HTTPS and SHA-256 verification before installing updates.
+- **Sparkle 2 self-updating:** Checks architecture-matched GitHub Releases appcasts with EdDSA (Ed25519) signature verification before extraction, automatic background checks, and delta updates.
 
 ## Requirements
 
@@ -94,7 +94,7 @@ Gaze is organized as a Swift 6 multi-module Swift Package (`Package.swift`) link
 | `GazeRecognition` | Core ML face embeddings, model residency, anti-spoofing, iris/pupil tracking, liveness challenges |
 | `GazeLockScreen` | Lock-screen notch/Dynamic Island capsule, SkyLight space placement, unlock animation, App Lock shield |
 | `GazeSecurity` | Lock/presence watchers, lockout, password submission guards, attempt log, admin prompt & `sudo` approval |
-| `GazeUpdates` | GitHub Releases feed/download trust policy, SHA-256 verification, in-place updater |
+| `GazeUpdates` | Sparkle 2 updater integration, architecture-specific appcast feed selection, gentle update reminders |
 | `GazeApp` / `GazeEntry` | App lifecycle, menu bar, Settings UI, enrollment/setup flows, AppIntents, `LiquidGlass.metal` |
 | `FinderExtension` & `PAM` | Sandboxed `GazeFinder.appex` (`com.pearleseed.Gaze.Finder`) and `pam_gaze.so` for `sudo` |
 

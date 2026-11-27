@@ -22,6 +22,7 @@ package final class TamperGuard {
 
 	private var bundleWatcher: DispatchSourceFileSystemObject?
 	package private(set) var bundleWasModified = false
+	private var allowingUpdateRelaunch = false
 
 	private init() {}
 
@@ -36,10 +37,23 @@ package final class TamperGuard {
 		bundleWatcher = nil
 	}
 
+	/// Permits Sparkle to terminate and replace the bundle after an EdDSA-verified update
+	/// approved by the user, without triggering a false quit-password prompt or tamper alert.
+	package func prepareForAuthorizedUpdateRelaunch() {
+		allowingUpdateRelaunch = true
+		stop()
+		Self.logger.notice("Prepared for verified update relaunch.")
+	}
+
 	// MARK: - Quitting
 
 	/// Called from `applicationShouldTerminate`. Returns true when the quit may proceed.
 	package func authorizeQuit() -> Bool {
+		if allowingUpdateRelaunch {
+			allowingUpdateRelaunch = false
+			Self.logger.notice("Quit authorised for verified software update.")
+			return true
+		}
 		guard Preferences.shared.tamperProtection else { return true }
 
 		if requestAdminRights(

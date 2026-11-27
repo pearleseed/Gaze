@@ -13,7 +13,7 @@ struct SettingsFixture: View {
 			case .behaviour:
 				SettingsBehaviourSection(settings: .shared, loginItem: $loginItem)
 			case .updates:
-				SettingsUpdatesSection(updates: .shared, releases: .shared)
+				SettingsUpdatesSection(updates: .shared, updater: .shared)
 			case .sourceBuild:
 				SettingsSourceBuildSection(updates: .shared)
 			}

@@ -19,9 +19,10 @@ test "$EXECUTABLE" = Gaze || fail "Unexpected executable"
 test -x "$APP/Contents/MacOS/$EXECUTABLE" || fail "Gaze executable missing"
 gaze_verify_bundle_arch "$APP" "$GAZE_ARCHS"
 test -f "$APP/Contents/PkgInfo" || fail "Bundle PkgInfo missing"
-for key in CFBundleName CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion NSCameraUsageDescription; do
+for key in CFBundleName CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion NSCameraUsageDescription SUFeedURL SUPublicEDKey; do
 	/usr/libexec/PlistBuddy -c "Print :$key" "$PLIST" >/dev/null 2>&1 || fail "Info.plist key $key missing"
 done
+test -f "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" || fail "Required Sparkle.framework missing"
 for model in FaceEmbedding Spoof; do
 	test -d "$APP/Contents/Resources/$model.mlmodelc" || fail "Required $model model missing"
 done
@@ -44,10 +45,17 @@ SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/gaze-release-verify.XXXXXX")"
 trap 'rm -rf "$SCRATCH"' EXIT
 codesign -d --entitlements :- "$APP" > "$SCRATCH/entitlements.plist" 2>/dev/null || fail "Entitlements unavailable"
 test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.camera' "$SCRATCH/entitlements.plist")" = true || fail "Camera entitlement missing"
-for entitlement in get-task-allow cs.allow-jit cs.disable-library-validation cs.allow-dyld-environment-variables cs.allow-unsigned-executable-memory cs.disable-executable-page-protection; do
+for entitlement in get-task-allow cs.allow-jit cs.allow-dyld-environment-variables cs.allow-unsigned-executable-memory cs.disable-executable-page-protection; do
 	value="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.$entitlement" "$SCRATCH/entitlements.plist" 2>/dev/null || true)"
 	test "$value" != true || fail "Unsafe release entitlement: $entitlement"
 done
+# Library Validation must remain enabled for all team-signed/Developer ID builds.
+# Ad-hoc Hardened Runtime builds have no Team ID and require disabling Library Validation
+# solely to load the embedded Sparkle.framework.
+if [ "$REQUIRE_DEVELOPER_ID" = "1" ] || { [ -n "$TEAM" ] && [ "$TEAM" != "not set" ]; }; then
+	value="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.cs.disable-library-validation' "$SCRATCH/entitlements.plist" 2>/dev/null || true)"
+	test "$value" != true || fail "Unsafe release entitlement: cs.disable-library-validation"
+fi
 if [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
 	xcrun stapler validate "$APP" || fail "Stapled notarization ticket not validated"
 	spctl --assess --type execute --verbose=2 "$APP" || fail "Gatekeeper did not accept the release bundle"

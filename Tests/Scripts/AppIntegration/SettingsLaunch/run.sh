@@ -63,6 +63,7 @@ echo "== build fixture ==" | tee -a "$LOG"
 xcrun swiftc -parse-as-library -swift-version 6 -warnings-as-errors -o "$EXE" \
 	-sdk "$GAZE_SDK" -target "$(host_target)" \
 	-I "$GAZE_SPM_BIN" -L "$GAZE_SPM_BIN" \
+	-F "$GAZE_SPARKLE_FRAMEWORK_DIR" -framework Sparkle -Xlinker -rpath -Xlinker "$GAZE_SPARKLE_FRAMEWORK_DIR" \
 	-lGazeApp -lGazeCore -lGazeDesign -lGazeTourKit -lGazeCamera \
 	-lGazeRecognition -lGazeLockScreen -lGazeSecurity -lGazeUpdates \
 	"$ROOT/Tests/Scripts/AppIntegration/SettingsLaunch/Fixture.swift" >>"$LOG" 2>&1 \
