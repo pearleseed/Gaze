@@ -69,6 +69,18 @@ assert(build.indexOf("'^Authority=Developer ID Application: '") < build.indexOf(
 assert(build.indexOf("'^Timestamp='") < build.indexOf('mv "$STAGE" "$APP"'));
 assert(build.includes('codesign --verify --strict -R "=$REFERENCE_REQUIREMENT"'));
 
+const signingSection = build.slice(
+	build.indexOf('SIGNING_FLAGS=(--options runtime)'),
+	build.indexOf('DEFAULT_OUTPUT="$ROOT/build/Gaze.app"')
+);
+const distSigningBranch = signingSection.slice(
+	signingSection.indexOf('if [ "${DIST:-}" = "1" ]'),
+	signingSection.indexOf('\nelse\n')
+);
+assert(distSigningBranch.includes('gaze_signing_identity 1 '), 'DIST=1 must use gaze_signing_identity 1');
+assert(!distSigningBranch.includes('gaze_signing_identity 0'), 'DIST=1 must not bypass mode 1 with gaze_signing_identity 0');
+assert(distSigningBranch.includes('GAZE_REQUIRE_DEVELOPER_ID="$REQUIRE_DEVELOPER_ID"'), 'DIST=1 must pass REQUIRE_DEVELOPER_ID to gaze_signing_identity');
+
 // Package.swift + Sources/Gaze* modular layout.
 const pkg = read('Package.swift');
 for (const mod of [

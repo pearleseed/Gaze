@@ -62,6 +62,24 @@ private func makeStubPixelBuffer() throws -> CVPixelBuffer {
 	return try #require(pixelBuffer)
 }
 
+private func makeStubFaceSample() throws -> FaceSample {
+	let buffer = try makeStubPixelBuffer()
+	let box = CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3)
+	let face = VNFaceObservation(boundingBox: box)
+	let request = VNDetectFaceLandmarksRequest()
+	request.inputFaceObservations = [face]
+	try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+	let landmarks = try #require(request.results?.first?.landmarks)
+	return FaceSample(
+		landmarks: landmarks,
+		boundingBox: box,
+		pose: .zero,
+		quality: 0.8,
+		hasQualityMeasurement: true,
+		pixelBuffer: buffer
+	)
+}
+
 @Suite("Camera Backpressure & Presence-Only Pipeline")
 struct CameraBackpressureTests {
 	@Test func mailboxRetainsOnlyLatestElementAndCountsDroppedFrames() throws {
@@ -324,5 +342,117 @@ struct CameraBackpressureTests {
 		presenceController.onPresenceObserved = { _ in }
 		presenceController.stop()
 		#expect(presenceController.state == .idle)
+	}
+
+	@Test func sanitizeForQueueStripsStaleFullFramesAndPreservesFreshFullFrames() throws {
+		let faceSample = try makeStubFaceSample()
+		let capturedAt = ContinuousClock.now
+
+		// Exact maximumAge boundary (500 ms) and zero age pass through untouched.
+		for age in [Duration.zero, CameraFrameLease.maximumAge] {
+			let now = capturedAt.advanced(by: age)
+			let fresh = CameraController.sanitizeForQueue(
+				.full(sample: faceSample, absence: nil, capturedAt: capturedAt),
+				now: now
+			)
+			if case .full(let sample, let absence, let outputCapturedAt) = fresh {
+				#expect(sample != nil)
+				#expect(absence == nil)
+				#expect(outputCapturedAt == capturedAt)
+			} else {
+				Issue.record("Expected fresh .full frame to pass through untouched at age \(age)")
+			}
+		}
+
+		// Stale (> 500 ms) and future (> now) .full frames strip FaceSample / CVPixelBuffer -> .detectionFailed.
+		for now in [
+			capturedAt.advanced(by: .milliseconds(510)),
+			capturedAt.advanced(by: .nanoseconds(-1)),
+		] {
+			let sanitized = CameraController.sanitizeForQueue(
+				.full(sample: faceSample, absence: nil, capturedAt: capturedAt),
+				now: now
+			)
+			if case .full(let sample, let absence, let outputCapturedAt) = sanitized {
+				#expect(sample == nil)
+				#expect(absence == .detectionFailed)
+				#expect(outputCapturedAt == capturedAt)
+			} else {
+				Issue.record("Expected sanitized .full output")
+			}
+		}
+	}
+
+	@Test func sanitizeForQueueConvertsStalePresenceToIndeterminateAndPreservesFresh() {
+		let capturedAt = ContinuousClock.now
+
+		for verdict in [PresenceObservation.Verdict.facePresent, .noFace, .indeterminate] {
+			let freshAtBoundary = CameraController.sanitizeForQueue(
+				.presence(verdict: verdict, capturedAt: capturedAt),
+				now: capturedAt.advanced(by: CameraFrameLease.maximumAge)
+			)
+			if case .presence(let outputVerdict, let outputCapturedAt) = freshAtBoundary {
+				#expect(outputVerdict == verdict)
+				#expect(outputCapturedAt == capturedAt)
+			} else {
+				Issue.record("Expected fresh .presence output to remain untouched")
+			}
+
+			for now in [
+				capturedAt.advanced(by: .milliseconds(510)),
+				capturedAt.advanced(by: .nanoseconds(-1)),
+			] {
+				let stale = CameraController.sanitizeForQueue(
+					.presence(verdict: verdict, capturedAt: capturedAt),
+					now: now
+				)
+				if case .presence(let outputVerdict, let outputCapturedAt) = stale {
+					#expect(outputVerdict == .indeterminate)
+					#expect(outputCapturedAt == capturedAt)
+				} else {
+					Issue.record("Expected stale .presence output")
+				}
+			}
+		}
+	}
+
+	@Test @MainActor func deliverRejectsExpiredFramesInvalidatesContinuityAndEmitsIndeterminate() {
+		let capturedAt = ContinuousClock.now
+		let deliveredAt = capturedAt.advanced(by: .milliseconds(510))
+
+		let presenceController = CameraController(accessScope: .foreground, allowsBystanders: true, analysisMode: .presenceOnly)
+		var observedPresence: [PresenceObservation] = []
+		var observedAbsence: [FaceAbsence?] = []
+		presenceController.onPresenceObserved = { observedPresence.append($0) }
+		presenceController.onFrameAnalyzed = { absence, _, _ in observedAbsence.append(absence) }
+
+		let initialRevision = presenceController.evidenceContinuity.revision
+		let sanitizedPresence = CameraController.sanitizeForQueue(
+			.presence(verdict: .facePresent, capturedAt: capturedAt),
+			now: deliveredAt
+		)
+		presenceController.deliver(sanitizedPresence, droppedBefore: 0, generation: UUID(), now: deliveredAt)
+
+		#expect(presenceController.analyzedFrames == 1)
+		#expect(presenceController.expiredFrames == 1)
+		#expect(presenceController.evidenceContinuity.revision != initialRevision)
+		#expect(observedPresence == [PresenceObservation(verdict: .indeterminate, frameID: 1, capturedAt: capturedAt)])
+		#expect(observedAbsence == [.detectionFailed])
+
+		let fullController = CameraController(accessScope: .foreground, allowsBystanders: false, analysisMode: .full)
+		var fullAbsences: [FaceAbsence?] = []
+		fullController.onFrameAnalyzed = { absence, _, _ in fullAbsences.append(absence) }
+
+		let fullRevision = fullController.evidenceContinuity.revision
+		let sanitizedFull = CameraController.sanitizeForQueue(
+			.full(sample: nil, absence: .noFace, capturedAt: capturedAt),
+			now: deliveredAt
+		)
+		fullController.deliver(sanitizedFull, droppedBefore: 0, generation: UUID(), now: deliveredAt)
+
+		#expect(fullController.analyzedFrames == 1)
+		#expect(fullController.expiredFrames == 1)
+		#expect(fullController.evidenceContinuity.revision != fullRevision)
+		#expect(fullAbsences == [.detectionFailed])
 	}
 }

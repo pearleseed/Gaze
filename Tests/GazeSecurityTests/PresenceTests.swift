@@ -256,4 +256,69 @@ struct PresenceTests {
 			#expect(!invalidPermitted)
 		}
 	}
+
+	@Test func stalePresenceFrameSanitizedToIndeterminateResetsAbsenceInsteadOfBridgingGap() {
+		// Regression for frameQueue stale pre-filter bypassing PresenceAbsenceGate reset:
+		// Frame 1 (.noFace at 0.0 s) -> Frame 2 (.facePresent captured at 0.1 s, delayed 510 ms)
+		// -> Frame 3 (.noFace at 0.65 s, within maximumGap=1.0 s of 0.0 s).
+		let t0 = ContinuousClock.now
+		var gate = Gate()
+
+		func seconds(since origin: ContinuousClock.Instant, to instant: ContinuousClock.Instant) -> Double {
+			let components = origin.duration(to: instant).components
+			return Double(components.seconds) + Double(components.attoseconds) / 1_000_000_000_000_000_000
+		}
+
+		func sample(from verdict: PresenceObservation.Verdict) -> PresenceAbsenceGate.Sample {
+			switch verdict {
+			case .facePresent: .facePresent
+			case .noFace: .noFace
+			case .indeterminate: .indeterminate
+			}
+		}
+
+		func feed(_ output: SampleProxy.Output, frameID: UInt64, observedAt: ContinuousClock.Instant) -> Verdict {
+			guard case .presence(let verdict, let capturedAt) = output else {
+				Issue.record("Expected .presence output")
+				return .needMore
+			}
+			return gate.update(
+				Observation(
+					sample: sample(from: verdict),
+					frameID: frameID,
+					capturedAt: seconds(since: t0, to: capturedAt),
+					observedAt: seconds(since: t0, to: observedAt)
+				)
+			)
+		}
+
+		let f1 = CameraController.sanitizeForQueue(.presence(verdict: .noFace, capturedAt: t0), now: t0)
+		#expect(feed(f1, frameID: 1, observedAt: t0) == .needMore)
+		#expect(gate.hasEvidence)
+
+		let f2Captured = t0.advanced(by: .milliseconds(100))
+		let f2Done = t0.advanced(by: .milliseconds(610))
+		let f2 = CameraController.sanitizeForQueue(.presence(verdict: .facePresent, capturedAt: f2Captured), now: f2Done)
+		#expect(feed(f2, frameID: 2, observedAt: f2Done) == .needMore)
+		#expect(!gate.hasEvidence)
+
+		// Frame 3 arrives at 0.65 s (0.65 - 0.0 <= 1.0 s), so without the .indeterminate reset
+		// Frame 1 -> Frame 3 would bridge across the 510 ms gap and prove absence at 4.0 s.
+		let f3Captured = t0.advanced(by: .milliseconds(650))
+		let f3 = CameraController.sanitizeForQueue(.presence(verdict: .noFace, capturedAt: f3Captured), now: f3Captured)
+		#expect(feed(f3, frameID: 3, observedAt: f3Captured) == .needMore)
+		#expect(gate.provenSpan == 0)
+
+		var nextID: UInt64 = 4
+		for ms in stride(from: 1_150, through: 4_150, by: 500) {
+			let t = t0.advanced(by: .milliseconds(ms))
+			let out = CameraController.sanitizeForQueue(.presence(verdict: .noFace, capturedAt: t), now: t)
+			#expect(feed(out, frameID: nextID, observedAt: t) == .needMore)
+			nextID += 1
+		}
+
+		let completion = t0.advanced(by: .milliseconds(4_650))
+		let finalOut = CameraController.sanitizeForQueue(.presence(verdict: .noFace, capturedAt: completion), now: completion)
+		#expect(feed(finalOut, frameID: nextID, observedAt: completion) == .absent)
+	}
 }

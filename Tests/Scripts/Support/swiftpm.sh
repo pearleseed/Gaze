@@ -12,15 +12,21 @@ gaze_swiftpm_package_name() {
 }
 
 gaze_swiftpm_setup() {
-	local root="$1"
+	local root="${1:-}"
+	[ -n "$root" ] || return 1
 	shift
-	. "$root/Tools/Scripts/toolchain.sh"
-	require_toolchain
-	for product in "$@"; do
-		swift build --package-path "$root" --product "$product" >/dev/null
-	done
-	GAZE_SPM_BIN="$(swift build --package-path "$root" --show-bin-path)"
-	GAZE_PACKAGE_NAME="$(gaze_swiftpm_package_name "$root")"
-	GAZE_SDK="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
+	. "$root/Tools/Scripts/toolchain.sh" || return 1
+	require_toolchain || return 1
+	# Build every library product in Package.swift so callers linking transitive
+	# `-lGaze*` static libraries succeed on a clean `.build/` checkout.
+	swift build --package-path "$root" >/dev/null || return 1
+	GAZE_SPM_BIN="$(swift build --package-path "$root" --show-bin-path)" || return 1
+	GAZE_PACKAGE_NAME="$(gaze_swiftpm_package_name "$root")" || return 1
+	if [ -n "${SDKROOT:-}" ]; then
+		GAZE_SDK="$SDKROOT"
+	else
+		GAZE_SDK="$(xcrun --sdk macosx --show-sdk-path)" || return 1
+	fi
+	[ -n "$GAZE_SPM_BIN" ] && [ -n "$GAZE_PACKAGE_NAME" ] && [ -n "$GAZE_SDK" ] || return 1
 	export GAZE_SPM_BIN GAZE_PACKAGE_NAME GAZE_SDK
 }

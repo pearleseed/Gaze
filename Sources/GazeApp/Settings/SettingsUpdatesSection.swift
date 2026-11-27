@@ -3,12 +3,17 @@ import SwiftUI
 import GazeDesign
 import GazeUpdates
 
-struct SettingsUpdatesSection: View {
+package struct SettingsUpdatesSection: View {
 	let updates: RepoRevealHelper
 	let releases: ReleaseUpdateChecker
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-	var body: some View {
+	/// Returns whether the release card below the status row should be shown.
+	package static func showsReleaseCard(isInstallOffered: Bool, notes: String) -> Bool {
+		isInstallOffered || !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+	}
+
+	package var body: some View {
 		SettingsSection(
 			title: "Updates",
 			footer: "Gaze installs the update and restarts. Your faces and settings stay."
@@ -49,7 +54,7 @@ struct SettingsUpdatesSection: View {
 			}
 
 			if case .available(let release) = releases.state,
-				!release.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+				Self.showsReleaseCard(isInstallOffered: isInstallOffered, notes: release.notes)
 			{
 				RowDivider(inset: 0)
 				releaseCard(release)
@@ -91,10 +96,12 @@ struct SettingsUpdatesSection: View {
 				.frame(height: 36)
 				.animation(reduceMotion ? nil : .smooth(duration: 0.35), value: releases.installer.state.isBusy)
 			}
-			ReleaseNotesView(markdown: release.notes)
-				.frame(maxWidth: .infinity, alignment: .leading)
-				.fixedSize(horizontal: false, vertical: true)
-				.textSelection(.enabled)
+			if !release.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+				ReleaseNotesView(markdown: release.notes)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.fixedSize(horizontal: false, vertical: true)
+					.textSelection(.enabled)
+			}
 		}
 		.frame(maxWidth: .infinity)
 		.padding(.horizontal, Theme.rowInset)

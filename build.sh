@@ -19,18 +19,9 @@ IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null)" || {
 	exit 1
 }
 SIGNING_FLAGS=(--options runtime)
-if [ "${DIST:-}" = "1" ] && [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
-	IDENTITY="$(gaze_signing_identity 1 "${GAZE_SIGNING_IDENTITY:-}" "$IDENTITIES")" || exit 1
-	SIGNING_FLAGS+=(--timestamp)
-elif [ "${DIST:-}" = "1" ]; then
-	if [ "${GAZE_SIGNING_IDENTITY:-}" = "-" ]; then
-		IDENTITY="-"
-	elif [ -n "${GAZE_SIGNING_IDENTITY:-}" ]; then
-		IDENTITY="$(gaze_signing_identity 0 "${GAZE_SIGNING_IDENTITY}" "$IDENTITIES")" || exit 1
-	else
-		IDENTITY="$(gaze_signing_identity 0 "" "$IDENTITIES" 2>/dev/null || printf '-')"
-	fi
-	if [ "$IDENTITY" != "-" ] && printf '%s\n' "$IDENTITIES" | grep -F "$IDENTITY" | grep -q 'Developer ID Application: '; then
+if [ "${DIST:-}" = "1" ]; then
+	IDENTITY="$(GAZE_REQUIRE_DEVELOPER_ID="$REQUIRE_DEVELOPER_ID" gaze_signing_identity 1 "${GAZE_SIGNING_IDENTITY:-}" "$IDENTITIES")" || exit 1
+	if [ "$IDENTITY" != "-" ] && { [[ "$IDENTITY" == "Developer ID Application: "* ]] || printf '%s\n' "$IDENTITIES" | grep -F "$IDENTITY" | grep -q 'Developer ID Application: '; }; then
 		SIGNING_FLAGS+=(--timestamp)
 	fi
 else

@@ -317,11 +317,8 @@ package final class CameraController {
 
 		do {
 			let running = try await capture.start(with: device) { [weak self] output in
-				let capturedAt = output.capturedAt
-				// Drop already-stale frames before the mailbox hop: mirrors the lease
-				// age check below; generation is still checked on-actor.
-				guard capturedAt <= .now, capturedAt.duration(to: .now) <= CameraFrameLease.maximumAge else { return }
-				guard mailbox.enqueue(output) else { return }
+				let sanitized = CameraController.sanitizeForQueue(output, now: .now)
+				guard mailbox.enqueue(sanitized) else { return }
 				drain.schedule { [weak self] in
 					// Always drain the mailbox slot first so an early pre-running frame
 					// cannot leave `drainScheduled` stuck true and strand later frames.
@@ -349,18 +346,42 @@ package final class CameraController {
 		state = .running
 	}
 
-	private func deliver(_ output: SampleProxy.Output, droppedBefore: Int, generation: UUID) {
+	/// Strips any stale or future `CVPixelBuffer`-backed payload before crossing `frameQueue`
+	/// into `mailbox`, preserving `capturedAt` as `.detectionFailed` / `.indeterminate` so
+	/// `deliver(...)` still tracks `expiredFrames` and resets `PresenceAbsenceGate`.
+	package nonisolated static func sanitizeForQueue(
+		_ output: SampleProxy.Output,
+		now: ContinuousClock.Instant = .now
+	) -> SampleProxy.Output {
+		let capturedAt = output.capturedAt
+		guard capturedAt <= now, capturedAt.duration(to: now) <= CameraFrameLease.maximumAge else {
+			switch output {
+			case .full:
+				return .full(sample: nil, absence: .detectionFailed, capturedAt: capturedAt)
+			case .presence:
+				return .presence(verdict: .indeterminate, capturedAt: capturedAt)
+			}
+		}
+		return output
+	}
+
+	/// Applies a dequeued analysis output on `MainActor`, enforcing lease freshness and continuity.
+	package func deliver(
+		_ output: SampleProxy.Output,
+		droppedBefore: Int = 0,
+		generation: UUID,
+		now: ContinuousClock.Instant = .now
+	) {
 		if droppedBefore > 0 {
 			analyzedFrames &+= UInt64(droppedBefore)
 		}
 		analyzedFrames &+= 1
 		let capturedAt = output.capturedAt
-		let now = ContinuousClock.now
 
 		switch output {
 		case .full(let sample, let absence, _):
 			guard lease.accepts(generation, capturedAt: capturedAt, now: now) else {
-				if droppedBefore > 0 { evidenceContinuity.invalidate() }
+				evidenceContinuity.invalidate()
 				expiredFrames &+= 1
 				onFrameAnalyzed?(.detectionFailed, analyzedFrames, capturedAt)
 				return
@@ -379,7 +400,7 @@ package final class CameraController {
 
 		case .presence(let verdict, _):
 			guard lease.accepts(generation, capturedAt: capturedAt, now: now) else {
-				if droppedBefore > 0 { evidenceContinuity.invalidate() }
+				evidenceContinuity.invalidate()
 				expiredFrames &+= 1
 				onPresenceObserved?(PresenceObservation(verdict: .indeterminate, frameID: analyzedFrames, capturedAt: capturedAt))
 				onFrameAnalyzed?(.detectionFailed, analyzedFrames, capturedAt)
@@ -592,7 +613,7 @@ package final class SampleProxy: NSObject, AVCaptureVideoDataOutputSampleBufferD
 		case full(sample: FaceSample?, absence: FaceAbsence?, capturedAt: ContinuousClock.Instant)
 		case presence(verdict: PresenceObservation.Verdict, capturedAt: ContinuousClock.Instant)
 
-		var capturedAt: ContinuousClock.Instant {
+		package var capturedAt: ContinuousClock.Instant {
 			switch self {
 			case .full(_, _, let capturedAt), .presence(_, let capturedAt):
 				return capturedAt
