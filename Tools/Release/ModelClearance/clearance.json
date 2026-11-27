@@ -397,7 +397,7 @@
         "status": "owner-confirmed-first-party-script-link-unverified"
       },
       "license": {
-        "summary": "Owner confirms first-party authorship of both icon files (2026-09-20, release-clearance session). Cleared for the Mac app bundle, website download from gazeunlock.com and source archive.",
+        "summary": "Owner confirms first-party authorship of both icon files (2026-09-20, release-clearance session). Cleared for the Mac app bundle, GitHub Releases download and source archive.",
         "grant": "Owner confirms first-party authorship of Resources/AppIcon.icon/Assets/gaze-mark.png and Resources/AppIcon.icon/icon.json.",
         "evidenceRefs": [
           "Owner confirmation, release-clearance session 2026-09-20 (first-party authorship)"

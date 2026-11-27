@@ -1,7 +1,7 @@
 # Tools
 
-- `Scripts/`: toolchain discovery, app source discovery, shared bundle resource
-  staging, the local build-and-run helper and the source-archive builder.
+- `Scripts/`: toolchain discovery, shared bundle resource staging, the local
+  build-and-run/install helpers, and the source-archive builder.
 - `Release/DMG/`: the disk-image layout, artwork, and `package.py` packager.
 - `Release/Homebrew/`: the cask for the `pearleseed/gaze` tap.
 - `Release/ModelClearance/`: the model and asset licence inventory that the build checks.
@@ -33,7 +33,7 @@ files recorded in [the inventory](Release/ModelClearance/clearance.json).
 See [NOTICE.md](../NOTICE.md) for model sources and redistribution terms.
 
 Run `bash Tools/Release/preflight.sh` to check the release prerequisites.
-Build each target separately with its Developer ID Application signature.
+Build each target separately (`GAZE_REQUIRE_DEVELOPER_ID=1` enforces a Developer ID Application signature; otherwise `Signing.sh` defaults to un-notarized signing).
 
 ```sh
 DIST=1 GAZE_ARCHS=arm64 bash build.sh
@@ -45,7 +45,7 @@ The app bundles are `build/release/arm64/Gaze.app` for Apple Silicon and
 to the host architecture. To cross-build in Xcode, pass `ARCHS=arm64` or
 `ARCHS=x86_64` and use a separate `-derivedDataPath` for each build.
 
-After notarizing and stapling each app, verify the bundle and package its DMG.
+Verify each bundle and package its DMG (`GAZE_REQUIRE_DEVELOPER_ID=1` verifies Developer ID, timestamp, stapled notarization ticket, and Gatekeeper):
 
 ```sh
 GAZE_ARCHS=arm64 bash Tools/Release/verify.sh
