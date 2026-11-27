@@ -5,15 +5,16 @@ import Testing
 
 @Suite("Sudo PAM Install & Uninstall Scripts")
 struct SudoInstallScriptTests {
-	private func runAppleScriptShell(_ shellScript: String) throws -> Int {
-		let source = SudoInstallScript.appleScript(shellScript, administrator: false)
-		let script = try #require(NSAppleScript(source: source))
-		var failure: NSDictionary?
-		script.executeAndReturnError(&failure)
-		guard let failure else { return 0 }
-		let code = try #require(failure[NSAppleScript.errorNumber] as? Int)
-		#expect(code > 0, "AppleScript error was not a shell exit code: \(failure)")
-		return code
+	private func runShell(_ shellScript: String) throws -> Int {
+		let process = Process()
+		process.executableURL = URL(fileURLWithPath: "/bin/sh")
+		process.arguments = ["-c", shellScript]
+		process.standardInput = FileHandle.nullDevice
+		process.standardOutput = Pipe()
+		process.standardError = Pipe()
+		try process.run()
+		process.waitUntilExit()
+		return Int(process.terminationStatus)
 	}
 
 	@Test func installUninstallRollbackAndRoutesThroughGaze() throws {
@@ -50,7 +51,7 @@ struct SudoInstallScriptTests {
 		try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: pamDir)
 		defer { try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pamDir) }
 		#expect(
-			try runAppleScriptShell(
+			try runShell(
 				SudoInstallScript.install(source: source, requirement: requirement, paths: paths)
 			) == SudoInstallScript.pamWriteDenied
 		)
@@ -60,7 +61,7 @@ struct SudoInstallScriptTests {
 
 		// Install over legacy rule while preserving unrelated rules & comments.
 		#expect(
-			try runAppleScriptShell(
+			try runShell(
 				SudoInstallScript.install(source: source, requirement: requirement, paths: paths)
 			) == 0
 		)
@@ -77,14 +78,14 @@ struct SudoInstallScriptTests {
 			SudoInstallScript.install(source: source, requirement: requirement, paths: paths)
 		)
 		#expect(terminal.hasPrefix(sudoPrefix))
-		#expect(try runAppleScriptShell(String(terminal.dropFirst(sudoPrefix.count))) == 0)
+		#expect(try runShell(String(terminal.dropFirst(sudoPrefix.count))) == 0)
 		#expect(try String(contentsOfFile: paths.sudoLocalPath, encoding: .utf8) == local)
 
 		// Deny final policy replacement via UF_IMMUTABLE and verify module & requirement rollback.
 		#expect(chflags(paths.sudoLocalPath, UInt32(UF_IMMUTABLE)) == 0)
 		defer { _ = chflags(paths.sudoLocalPath, 0) }
 		#expect(
-			try runAppleScriptShell(
+			try runShell(
 				SudoInstallScript.install(source: source, requirement: "replacement", paths: paths)
 			) == SudoInstallScript.pamWriteDenied
 		)
@@ -92,7 +93,7 @@ struct SudoInstallScriptTests {
 		#expect(chflags(paths.sudoLocalPath, 0) == 0)
 
 		// Uninstall preserves unrelated rules and removes module and requirement.
-		#expect(try runAppleScriptShell(SudoInstallScript.uninstall(paths: paths)) == 0)
+		#expect(try runShell(SudoInstallScript.uninstall(paths: paths)) == 0)
 		let after = try String(contentsOfFile: paths.sudoLocalPath, encoding: .utf8)
 		#expect(after == otherRules)
 		#expect(!fm.fileExists(atPath: paths.modulePath) && !fm.fileExists(atPath: paths.requirementPath))
@@ -101,7 +102,7 @@ struct SudoInstallScriptTests {
 		try fm.removeItem(atPath: paths.sudoLocalPath)
 		try otherRules.write(toFile: paths.sudoLocalTemplate, atomically: true, encoding: .utf8)
 		#expect(
-			try runAppleScriptShell(
+			try runShell(
 				SudoInstallScript.install(source: source, requirement: requirement, paths: paths)
 			) == 0
 		)
@@ -113,5 +114,100 @@ struct SudoInstallScriptTests {
 		#expect(SudoInstallScript.routesThroughGaze("auth\tsufficient   /Library/Security/Gaze/pam_gaze.so\n"))
 		#expect(SudoInstallScript.routesThroughGaze(existing, modulePath: SudoInstallScript.legacyModulePath))
 		#expect(!SudoInstallScript.routesThroughGaze("#auth sufficient /Library/Security/Gaze/pam_gaze.so\n"))
+	}
+
+	@Test @MainActor func privilegedRunnerAskpassRetryCancelAndErrorMapping() async throws {
+		let fm = FileManager.default
+		let dir = fm.temporaryDirectory.appendingPathComponent("Gaze-askpass-test-\(UUID().uuidString)")
+		try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+		defer { try? fm.removeItem(at: dir) }
+
+		let captured = dir.appendingPathComponent("captured.txt").path
+		let trickyPassword = #"  p@$$w\rd "'$HOME`id`*?; "# + "\t✓  "
+
+		// 1. Askpass retries once on wrong password and transfers special characters verbatim.
+		var attempts: [Int] = []
+		let retryScript = """
+		first=$("$SUDO_ASKPASS") || exit 1
+		[ "$first" = "wrong" ] || exit 2
+		second=$("$SUDO_ASKPASS") || exit 1
+		printf '%s' "$second" > '\(captured)'
+		"""
+		try await SudoApproval.runPrivileged(
+			"echo ok",
+			executableURL: URL(fileURLWithPath: "/bin/sh"),
+			arguments: ["-c", retryScript],
+			promptPassword: { attempt in
+				attempts.append(attempt)
+				return attempt == 1 ? "wrong" : trickyPassword
+			}
+		)
+		#expect(attempts == [1, 2])
+		#expect(try String(contentsOfFile: captured, encoding: .utf8) == trickyPassword)
+
+		// 2. Auth succeeding without calling SUDO_ASKPASS (models pam_tid.so Touch ID) never prompts or deadlocks.
+		var touchIDPrompts = 0
+		try await SudoApproval.runPrivileged(
+			"echo ok",
+			executableURL: URL(fileURLWithPath: "/bin/sh"),
+			arguments: ["-c", "exit 0"],
+			promptPassword: { _ in
+				touchIDPrompts += 1
+				return "unused"
+			}
+		)
+		#expect(touchIDPrompts == 0)
+
+		// 3. Cancelling the password prompt maps to SudoApprovalError.cancelled.
+		do {
+			try await SudoApproval.runPrivileged(
+				"echo ok",
+				executableURL: URL(fileURLWithPath: "/bin/sh"),
+				arguments: ["-c", #""$SUDO_ASKPASS" >/dev/null || { echo "sudo: no password was provided" >&2; exit 1; }"#],
+				promptPassword: { _ in nil }
+			)
+			Issue.record("Expected SudoApprovalError.cancelled")
+		} catch SudoApprovalError.cancelled {
+			// expected
+		}
+
+		// 4. Exit code 77 maps to pamWriteDenied with a copyable Terminal fallback command.
+		let sampleScript = "echo install"
+		do {
+			try await SudoApproval.runPrivileged(
+				sampleScript,
+				executableURL: URL(fileURLWithPath: "/bin/sh"),
+				arguments: ["-c", "exit \(SudoInstallScript.pamWriteDenied)"],
+				promptPassword: { _ in nil }
+			)
+			Issue.record("Expected SudoApprovalError.pamWriteDenied")
+		} catch SudoApprovalError.pamWriteDenied(let command) {
+			#expect(command == SudoInstallScript.terminalCommand(sampleScript))
+		}
+
+		// 5. Sudo auth failure and missing sudoers privileges map to clear user errors.
+		do {
+			try await SudoApproval.runPrivileged(
+				sampleScript,
+				executableURL: URL(fileURLWithPath: "/bin/sh"),
+				arguments: ["-c", "echo 'sudo: 3 incorrect password attempts' >&2; exit 1"],
+				promptPassword: { _ in nil }
+			)
+			Issue.record("Expected SudoApprovalError.authenticationFailed")
+		} catch SudoApprovalError.authenticationFailed {
+			// expected
+		}
+
+		do {
+			try await SudoApproval.runPrivileged(
+				sampleScript,
+				executableURL: URL(fileURLWithPath: "/bin/sh"),
+				arguments: ["-c", "echo 'alice is not in the sudoers file.' >&2; exit 1"],
+				promptPassword: { _ in nil }
+			)
+			Issue.record("Expected SudoApprovalError.notInSudoers")
+		} catch SudoApprovalError.notInSudoers {
+			// expected
+		}
 	}
 }

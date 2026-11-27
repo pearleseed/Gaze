@@ -165,15 +165,6 @@ package struct SudoInstallScript: Sendable {
 		"/usr/bin/sudo -k /bin/sh -c " + q(shellScript)
 	}
 
-	/// Wraps a shell script in an AppleScript `do shell script` command.
-	package static func appleScript(_ shellScript: String, administrator: Bool = true) -> String {
-		let escaped = shellScript
-			.replacingOccurrences(of: "\\", with: "\\\\")
-			.replacingOccurrences(of: "\"", with: "\\\"")
-			.replacingOccurrences(of: "\n", with: "\\n")
-		return "do shell script \"\(escaped)\"" + (administrator ? " with administrator privileges" : "")
-	}
-
 	/// Whether sudo_local text holds Gaze's auth line, ignoring spacing.
 	package static func routesThroughGaze(_ sudoLocal: String, modulePath: String = Paths().modulePath) -> Bool {
 		sudoLocal.split(separator: "\n").contains {

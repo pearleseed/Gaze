@@ -284,11 +284,21 @@ struct SettingsSecurityPane: View {
 			if let sudoError {
 				StatusLine(kind: .error, message: sudoError.message)
 				if let command = sudoError.terminalCommand {
-					Button("Copy Terminal Command") {
-						NSPasteboard.general.clearContents()
-						NSPasteboard.general.setString(command, forType: .string)
+					HStack(spacing: 6) {
+						Button("Open Full Disk Access") {
+							openPrivacySettings("Privacy_AllFiles")
+						}
+						.gazeButton()
+						.fixedSize()
+						Button("Copy Terminal Command") {
+							NSPasteboard.general.clearContents()
+							NSPasteboard.general.setString(command, forType: .string)
+						}
+						.gazeButton()
+						.fixedSize()
 					}
-					.gazeButton()
+					.padding(.horizontal, Theme.rowInset)
+					.padding(.bottom, 10)
 				}
 			}
 		}

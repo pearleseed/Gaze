@@ -41,5 +41,7 @@
 	<true/>
 	<key>NSRequiresAquaSystemAppearance</key>
 	<false/>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>Gaze needs administrator access to install or remove its sudo PAM rule in /etc/pam.d/sudo_local.</string>
 </dict>
 </plist>

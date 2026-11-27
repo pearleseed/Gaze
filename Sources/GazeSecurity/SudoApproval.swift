@@ -185,6 +185,8 @@ package final class SudoApproval {
 			logger.notice("Rejected a sudo request from pid \(peerPid, privacy: .public): not /usr/bin/sudo.")
 			return nil
 		}
+		var noSigPipe: Int32 = 1
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 		var timeout = timeval(tv_sec: 2, tv_usec: 0)
 		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 		setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
@@ -345,6 +347,11 @@ package final class SudoApproval {
 		return string
 	}
 
+	package enum SetupAction: Sendable {
+		case install
+		case uninstall
+	}
+
 	/// Copies pam_gaze.so into place, writes the listener requirement Gaze's
 	/// module checks, and adds the sudo_local line, all inside one privileged
 	/// shell script so the user authenticates only once. Throws when anything
@@ -355,36 +362,295 @@ package final class SudoApproval {
 			throw SudoApprovalError.moduleMissing
 		}
 		let requirement = try designatedRequirement()
-		try await runPrivileged(SudoInstallScript.install(source: source, requirement: requirement))
+		try await runPrivileged(SudoInstallScript.install(source: source, requirement: requirement), action: .install)
 		guard isInstalled else { throw SudoApprovalError.notInstalledAfterScript }
 	}
 
 	/// Removes the sudo_local line, the module, and the listener requirement,
 	/// again as one privileged script. Other sudo_local lines are kept.
 	package static func uninstall() async throws {
-		try await runPrivileged(SudoInstallScript.uninstall())
+		try await runPrivileged(SudoInstallScript.uninstall(), action: .uninstall)
 	}
 
-	/// Runs the script with administrator privileges on a background thread:
-	/// NSAppleScript blocks while the system prompts, and that must never
-	/// freeze the app's main thread.
-	private static func runPrivileged(_ shellScript: String) async throws {
-		let scriptSource = SudoInstallScript.appleScript(shellScript)
-		try await Task.detached(priority: .userInitiated) {
-			var failure: NSDictionary?
-			let script = NSAppleScript(source: scriptSource)
-			guard script?.executeAndReturnError(&failure) != nil, failure == nil else {
-				// -128 is the user cancelling the administrator prompt.
-				let code = failure?[NSAppleScript.errorNumber] as? Int
-				if code == -128 { throw SudoApprovalError.cancelled }
-				let message = failure?[NSAppleScript.errorMessage] as? String ?? "the privileged script failed"
-				logger.error("The sudo setup script failed: \(message, privacy: .public)")
-				if code == SudoInstallScript.pamWriteDenied {
-					throw SudoApprovalError.pamWriteDenied(SudoInstallScript.terminalCommand(shellScript))
+	/// Runs the setup script via `/usr/bin/sudo -k -A` directly as a child of
+	/// Gaze instead of `NSAppleScript` (`do shell script ... with administrator
+	/// privileges`). On macOS 26+, AppleScript routes privileged scripts through
+	/// the persistent root daemon `com.apple.authtrampoline` (`auid=0`), which
+	/// severs TCC attribution and breaks `kTCCServiceSystemPolicySysAdminFiles`
+	/// forwarding to the logged-in user's `tccd`, causing macOS System Policy to
+	/// deny every write to `/etc/pam.d/sudo_local`. Running `/usr/bin/sudo`
+	/// directly keeps Gaze as the responsible process in the user's audit session
+	/// so macOS can prompt for system administration access or honour Gaze's
+	/// Full Disk Access grant.
+	package static func runPrivileged(
+		_ shellScript: String,
+		action: SetupAction = .install,
+		executableURL: URL = URL(fileURLWithPath: "/usr/bin/sudo"),
+		arguments: [String]? = nil,
+		promptPassword: (@MainActor @Sendable (Int) async -> String?)? = nil
+	) async throws {
+		let prompt: @MainActor @Sendable (Int) async -> String? = promptPassword ?? { attempt in
+			Self.promptAdminPassword(for: action, attempt: attempt)
+		}
+		let bridge = try SudoAskpassBridge()
+		let resolvedArguments = arguments ?? ["-k", "-A", "/bin/sh", "-c", shellScript]
+		let outcome = try await bridge.run(
+			executableURL: executableURL,
+			arguments: resolvedArguments,
+			promptPassword: prompt
+		)
+		guard outcome.exitCode != 0 else { return }
+		if outcome.cancelled {
+			throw SudoApprovalError.cancelled
+		}
+		let stderr = outcome.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+		let message = stderr.isEmpty ? "the privileged script exited with code \(outcome.exitCode)" : stderr
+		logger.error("The sudo setup script failed (exit \(outcome.exitCode)): \(message, privacy: .public)")
+		if outcome.exitCode == Int32(SudoInstallScript.pamWriteDenied) {
+			throw SudoApprovalError.pamWriteDenied(SudoInstallScript.terminalCommand(shellScript))
+		}
+		let lower = stderr.lowercased()
+		if lower.contains("is not in the sudoers file") {
+			throw SudoApprovalError.notInSudoers
+		}
+		if lower.contains("incorrect password attempt") || lower.contains("no password was provided") {
+			throw SudoApprovalError.authenticationFailed
+		}
+		if (lower.contains("pam.d") || lower.contains("sudo_local"))
+			&& (lower.contains("operation not permitted") || lower.contains("permission denied")) {
+			throw SudoApprovalError.pamWriteDenied(SudoInstallScript.terminalCommand(shellScript))
+		}
+		throw SudoApprovalError.scriptFailed(message)
+	}
+
+	private static func promptAdminPassword(for action: SetupAction, attempt: Int) -> String? {
+		AppActivation.bringToFront(userInitiated: true)
+		let alert = NSAlert()
+		alert.alertStyle = .informational
+		alert.messageText = action == .install ? "Turn on sudo approval" : "Turn off sudo approval"
+		let user = NSUserName()
+		if attempt > 1 {
+			alert.informativeText = "Incorrect password. Enter the administrator password for \(user) to update /etc/pam.d/sudo_local."
+		} else {
+			alert.informativeText = "Enter the administrator password for \(user) to update /etc/pam.d/sudo_local."
+		}
+		let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+		field.placeholderString = "Password"
+		alert.accessoryView = field
+		alert.addButton(withTitle: "Continue")
+		alert.addButton(withTitle: "Cancel")
+		alert.layout()
+		alert.window.initialFirstResponder = field
+		let response = alert.runModal()
+		let value = field.stringValue
+		field.stringValue = ""
+		return response == .alertFirstButtonReturn ? value : nil
+	}
+}
+
+/// Bridges `sudo -A`'s `SUDO_ASKPASS` helper back to Gaze over two private
+/// `0600` FIFOs in a `0700` temporary directory so passwords never touch disk,
+/// `argv`, or environment variables, and Touch ID (`pam_tid.so`) succeeds
+/// without ever raising a password prompt.
+private final class SudoAskpassBridge: Sendable {
+	struct Outcome: Sendable {
+		let exitCode: Int32
+		let stderr: String
+		let cancelled: Bool
+	}
+
+	private let tempDir: String
+	private let reqPath: String
+	private let resPath: String
+	private let askpassPath: String
+
+	init() throws {
+		let pathTemplate = (NSTemporaryDirectory() as NSString).appendingPathComponent("gaze-sudo.XXXXXX")
+		var template = Array(pathTemplate.utf8CString)
+		let created = template.withUnsafeMutableBufferPointer { buffer -> String? in
+			guard let base = buffer.baseAddress, mkdtemp(base) != nil else { return nil }
+			return String(cString: base)
+		}
+		guard let dir = created else {
+			throw SudoApprovalError.scriptFailed("Could not create temporary askpass directory.")
+		}
+		let cleanupOnFailure = { try? FileManager.default.removeItem(atPath: dir) }
+		guard chmod(dir, 0o700) == 0 else {
+			cleanupOnFailure()
+			throw SudoApprovalError.scriptFailed("Could not secure temporary askpass directory.")
+		}
+		let req = dir + "/req.fifo"
+		let res = dir + "/res.fifo"
+		let askpass = dir + "/askpass"
+		guard mkfifo(req, 0o600) == 0, mkfifo(res, 0o600) == 0 else {
+			cleanupOnFailure()
+			throw SudoApprovalError.scriptFailed("Could not create askpass pipes.")
+		}
+		func shQuote(_ value: String) -> String {
+			"'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+		}
+		let script = """
+		#!/bin/sh
+		printf 'ask\\n' > \(shQuote(req)) || exit 1
+		{
+		  IFS= read -r status || exit 1
+		  [ "$status" = "OK" ] || exit 1
+		  IFS= read -r password || exit 1
+		} < \(shQuote(res))
+		printf '%s\\n' "$password"
+		"""
+		let fd = open(askpass, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o700)
+		guard fd >= 0 else {
+			cleanupOnFailure()
+			throw SudoApprovalError.scriptFailed("Could not create askpass helper.")
+		}
+		let bytes = Array(script.utf8)
+		let written = Self.writeAll(fd: fd, bytes: bytes)
+		Darwin.close(fd)
+		guard written else {
+			cleanupOnFailure()
+			throw SudoApprovalError.scriptFailed("Could not write askpass helper.")
+		}
+		self.tempDir = dir
+		self.reqPath = req
+		self.resPath = res
+		self.askpassPath = askpass
+	}
+
+	func run(
+		executableURL: URL,
+		arguments: [String],
+		promptPassword: @escaping @MainActor @Sendable (Int) async -> String?
+	) async throws -> Outcome {
+		defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+		// Open req.fifo O_RDWR before spawning the child so reads block cleanly
+		// across multiple retries and shutdown can always wake the reader with "DONE\n".
+		let reqFD = open(reqPath, O_RDWR | O_NOFOLLOW)
+		guard reqFD >= 0 else {
+			throw SudoApprovalError.scriptFailed("Could not open askpass request pipe.")
+		}
+		_ = fcntl(reqFD, F_SETNOSIGPIPE, 1)
+		defer { Darwin.close(reqFD) }
+
+		let process = Process()
+		process.executableURL = executableURL
+		process.arguments = arguments
+		var env = ProcessInfo.processInfo.environment
+		env["SUDO_ASKPASS"] = askpassPath
+		env["LC_ALL"] = "C"
+		process.environment = env
+		process.standardInput = FileHandle.nullDevice
+		let stdoutPipe = Pipe()
+		let stderrPipe = Pipe()
+		process.standardOutput = stdoutPipe
+		process.standardError = stderrPipe
+
+		let isRunning = OSAllocatedUnfairLock(initialState: true)
+
+		let stdoutTask = Task.detached(priority: .utility) {
+			_ = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+		}
+		let stderrTask = Task.detached(priority: .utility) {
+			String(decoding: stderrPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+		}
+
+		let resPath = self.resPath
+		let askpassTask = Task.detached(priority: .userInitiated) { () -> Bool in
+			var attempt = 0
+			var userCancelled = false
+			while let line = Self.readLine(fd: reqFD) {
+				if line == "DONE" { break }
+				guard line == "ask" else { continue }
+				attempt += 1
+				let password = await promptPassword(attempt)
+				let payload: [UInt8]
+				if let password {
+					let singleLine = password.components(separatedBy: .newlines).first ?? ""
+					payload = Array("OK\n\(singleLine)\n".utf8)
+				} else {
+					userCancelled = true
+					payload = Array("CANCEL\n".utf8)
 				}
-				throw SudoApprovalError.scriptFailed(message)
+				Self.sendResponse(payload, to: resPath, stillRunning: { isRunning.withLock { $0 } })
 			}
+			return userCancelled
+		}
+
+		do {
+			try process.run()
+		} catch {
+			isRunning.withLock { $0 = false }
+			_ = Self.writeAll(fd: reqFD, bytes: Array("DONE\n".utf8))
+			_ = await askpassTask.value
+			stdoutPipe.fileHandleForWriting.closeFile()
+			stderrPipe.fileHandleForWriting.closeFile()
+			await stdoutTask.value
+			_ = await stderrTask.value
+			throw SudoApprovalError.scriptFailed(error.localizedDescription)
+		}
+
+		let exitCode: Int32 = await Task.detached(priority: .userInitiated) {
+			process.waitUntilExit()
+			return process.terminationStatus
 		}.value
+
+		isRunning.withLock { $0 = false }
+		_ = Self.writeAll(fd: reqFD, bytes: Array("DONE\n".utf8))
+		let cancelled = await askpassTask.value
+		await stdoutTask.value
+		let stderr = await stderrTask.value
+		return Outcome(exitCode: exitCode, stderr: stderr, cancelled: cancelled)
+	}
+
+	private static func readLine(fd: Int32) -> String? {
+		var bytes: [UInt8] = []
+		while bytes.count < 64 {
+			var byte: UInt8 = 0
+			let count = Darwin.read(fd, &byte, 1)
+			if count < 0 {
+				if errno == EINTR { continue }
+				return nil
+			}
+			if count == 0 { return nil }
+			if byte == 10 { break }
+			bytes.append(byte)
+		}
+		return String(bytes: bytes, encoding: .utf8)
+	}
+
+	private static func sendResponse(_ bytes: [UInt8], to path: String, stillRunning: () -> Bool) {
+		var fd: Int32 = -1
+		for _ in 0..<200 {
+			fd = open(path, O_WRONLY | O_NONBLOCK | O_NOFOLLOW)
+			if fd >= 0 { break }
+			if errno != ENXIO && errno != EINTR { return }
+			if !stillRunning() { return }
+			usleep(10_000)
+		}
+		guard fd >= 0 else { return }
+		defer { Darwin.close(fd) }
+		let flags = fcntl(fd, F_GETFL)
+		if flags >= 0 { _ = fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) }
+		_ = fcntl(fd, F_SETNOSIGPIPE, 1)
+		_ = writeAll(fd: fd, bytes: bytes)
+	}
+
+	private static func writeAll(fd: Int32, bytes: [UInt8]) -> Bool {
+		bytes.withUnsafeBytes { buffer in
+			guard let base = buffer.baseAddress else { return true }
+			var sent = 0
+			while sent < buffer.count {
+				let n = Darwin.write(fd, base.advanced(by: sent), buffer.count - sent)
+				if n < 0 {
+					if errno == EINTR { continue }
+					return false
+				}
+				if n == 0 { return false }
+				sent += n
+			}
+			return true
+		}
 	}
 }
 
@@ -393,6 +659,8 @@ package enum SudoApprovalError: LocalizedError, Sendable {
 	case requirementUnavailable
 	case socketPathTooLong
 	case cancelled
+	case authenticationFailed
+	case notInSudoers
 	case notInstalledAfterScript
 	case pamWriteDenied(String)
 	case scriptFailed(String)
@@ -407,10 +675,14 @@ package enum SudoApprovalError: LocalizedError, Sendable {
 			return "The sudo socket path is too long to bind."
 		case .cancelled:
 			return "The administrator prompt was cancelled."
+		case .authenticationFailed:
+			return "Incorrect administrator password."
+		case .notInSudoers:
+			return "Your macOS account does not have sudo administrator privileges."
 		case .notInstalledAfterScript:
 			return "The setup ran, but sudo still isn't set up to use Gaze."
 		case .pamWriteDenied:
-			return "macOS blocked Gaze’s installer from updating /etc/pam.d/sudo_local. Copy the command, review it in Terminal, and run it with administrator approval. If Terminal is also denied, check its Full Disk Access in Privacy & Security."
+			return "macOS blocked Gaze from updating /etc/pam.d/sudo_local. Allow Gaze in Privacy & Security → Full Disk Access (or allow the system administration prompt) and try again, or copy and run the command in Terminal."
 		case .scriptFailed(let message):
 			return "macOS reported: \(message)"
 		}
