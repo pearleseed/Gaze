@@ -375,12 +375,27 @@ package final class LockScreenLight {
 		return (get, set)
 	}
 
+	/// The built-in display, even when an external monitor is the main display.
+	/// External monitors are never touched by DisplayServices brightness calls.
+	private static func builtInDisplayID() -> CGDirectDisplayID? {
+		var count: UInt32 = 0
+		if CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 {
+			var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+			if CGGetOnlineDisplayList(count, &displays, &count) == .success {
+				if let internalID = displays.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) != 0 }) {
+					return internalID
+				}
+			}
+		}
+		let main = CGMainDisplayID()
+		return CGDisplayIsBuiltin(main) != 0 ? main : nil
+	}
+
 	/// Saves the built-in display's brightness and ramps it to full. Built-in only —
-	/// the main display is the lamp; external monitors are never touched. Never runs
-	/// while the display is asleep.
+	/// external monitors are never touched. Never runs while the display is asleep.
 	private func boostBrightness() {
-		guard let fns = Self.brightnessFunctions() else { return }
-		guard CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
+		guard let fns = Self.brightnessFunctions(), let displayID = Self.builtInDisplayID() else { return }
+		guard CGDisplayIsAsleep(displayID) == 0 else { return }
 		if savedBrightness == nil, let pending = restoringTo {
 			savedBrightness = pending
 			restoringTo = nil
@@ -388,54 +403,64 @@ package final class LockScreenLight {
 		}
 		if savedBrightness == nil {
 			var current: Float = 0
-			guard fns.get(CGMainDisplayID(), &current) == 0 else { return }
+			guard fns.get(displayID, &current) == 0 else { return }
 			// Already full: nothing to save and nothing to undo later.
 			guard current < 1 else { return }
 			savedBrightness = current
 			UserDefaults.standard.set(Double(current), forKey: Self.brightnessKey)
 		}
 		if reduceMotion {
-			fns.set(CGMainDisplayID(), 1)
+			fns.set(displayID, 1)
 		} else {
-			startRamp(to: 1, clearingKeyOnCompletion: false)
+			startRamp(to: 1, on: displayID, clearingKeyOnCompletion: false)
 		}
 	}
 
 	/// Ramps the built-in display back to the saved value. Safe to call twice: the
-	/// second call finds nothing saved and does nothing.
+	/// second call finds nothing saved and does nothing. If the built-in display is
+	/// already asleep, keeps the saved brightness in UserDefaults so wake restores it.
 	private func restoreBrightness() {
 		let saved: Float? =
 			savedBrightness ?? (UserDefaults.standard.object(forKey: Self.brightnessKey) as? NSNumber)?.floatValue
 		guard let saved else { return }
 		savedBrightness = nil
-		guard let fns = Self.brightnessFunctions() else {
+		guard let fns = Self.brightnessFunctions(), let displayID = Self.builtInDisplayID() else {
 			UserDefaults.standard.removeObject(forKey: Self.brightnessKey)
 			return
 		}
+		// Display already asleep: setting brightness now can be ignored by the driver
+		// and clearing UserDefaults would strand the screen at 100% on next wake.
+		guard CGDisplayIsAsleep(displayID) == 0 else {
+			rampTask?.cancel()
+			rampTask = nil
+			restoringTo = nil
+			return
+		}
 		if reduceMotion {
-			fns.set(CGMainDisplayID(), saved)
+			fns.set(displayID, saved)
 			UserDefaults.standard.removeObject(forKey: Self.brightnessKey)
 		} else {
 			restoringTo = saved
-			startRamp(to: saved, clearingKeyOnCompletion: true)
+			startRamp(to: saved, on: displayID, clearingKeyOnCompletion: true)
 		}
 	}
 
 	/// A dozen small steps over about 0.4 s, the way the keys feel.
-	private func startRamp(to target: Float, clearingKeyOnCompletion: Bool) {
+	private func startRamp(to target: Float, on displayID: CGDirectDisplayID, clearingKeyOnCompletion: Bool) {
 		guard let fns = Self.brightnessFunctions() else { return }
 		rampTask?.cancel()
 		rampGeneration += 1
 		let generation = rampGeneration
 		var start = target
-		_ = fns.get(CGMainDisplayID(), &start)
+		_ = fns.get(displayID, &start)
 		rampTask = Task { [weak self] in
 			let steps = 12
 			for step in 1...steps {
 				try? await Task.sleep(for: .milliseconds(33))
 				guard !Task.isCancelled else { return }
+				guard CGDisplayIsAsleep(displayID) == 0 else { return }
 				let t = Float(step) / Float(steps)
-				fns.set(CGMainDisplayID(), start + (target - start) * t)
+				fns.set(displayID, start + (target - start) * t)
 			}
 			guard !Task.isCancelled else { return }
 			// Only the latest ramp clears the key: a show() that landed mid-restore
@@ -447,16 +472,24 @@ package final class LockScreenLight {
 		}
 	}
 
-	/// Last launch ended boosted — put the saved value back before anything else runs.
+	/// Restores brightness if an earlier scan exited while the display was asleep
+	/// or before the restore ramp completed. Safe to call on wake and at launch.
+	package func restoreStrandedBrightnessIfNeeded() {
+		guard !isShowing else { return }
+		restoreStrandedBrightness()
+	}
+
+	/// Last launch or sleeping display ended boosted — put the saved value back before anything else runs.
 	private func restoreStrandedBrightness() {
 		guard
 			let saved = UserDefaults.standard.object(forKey: Self.brightnessKey) as? NSNumber
 		else { return }
 		guard
 			let fns = Self.brightnessFunctions(),
-			CGDisplayIsAsleep(CGMainDisplayID()) == 0
+			let displayID = Self.builtInDisplayID(),
+			CGDisplayIsAsleep(displayID) == 0
 		else { return }
-		fns.set(CGMainDisplayID(), saved.floatValue)
+		fns.set(displayID, saved.floatValue)
 		UserDefaults.standard.removeObject(forKey: Self.brightnessKey)
 	}
 
@@ -482,7 +515,7 @@ package final class LockScreenLight {
 	/// Fades and grows the glow in over 0.4 s, or appears instantly under Reduce Motion.
 	package func show() {
 		isShowing = true
-		guard let screen = NSScreen.main else { return }
+		guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
 		boostBrightness()
 		if window == nil { build(on: screen) }
 		guard let window, let glow = window.contentView as? EdgeGlowView else { return }

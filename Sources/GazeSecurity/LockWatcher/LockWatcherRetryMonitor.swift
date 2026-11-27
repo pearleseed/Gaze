@@ -20,8 +20,8 @@ extension LockWatcher {
 	///   a wake, because it is not — asking too early returns a camera that reports
 	///   running and delivers black frames for the first second.
 	internal func beginAttempt(trigger: String, settle: Duration = .zero) {
-		// Fallback in case the screen saver's start notification never arrived.
-		if Self.screenSaverIsRunning() { screenSaverRunning = true }
+		// Reconcile screen-saver state in case didstart/didstop was missed across Sleep.
+		reconcileScreenSaverState()
 		guard !screenSaverRunning else {
 			Self.logger.notice("\(trigger, privacy: .public) with the screen saver running; not scanning until it's dismissed.")
 			return
@@ -151,18 +151,21 @@ extension LockWatcher {
 			// Taken after the settle, so the key press or Escape that woke the Mac, or
 			// came with opening the lid, does not read as someone typing a password.
 			let inputSnapshot = LockScreenInputSnapshot.current()
-			// A camera that fails right after a wake usually works a second later, so it
-			// gets one restart. The input snapshot is kept, so a click during the first try
-			// still stops the second.
-			for retry in 0..<2 {
+			// A camera that fails right after a wake usually works a moment later once the
+			// ISP / USB bus finishes resuming, so it gets two bounded restarts. The input
+			// snapshot is kept, so a click or typing during an earlier try still stops it.
+			let retryDelays: [Duration] = [.milliseconds(500), .seconds(1)]
+			for retry in 0...retryDelays.count {
 				self.cameraFailed = false
 				await self.attemptUnlock(inputSnapshot: inputSnapshot, identifier: identifier,
 					prestarted: retry == 0 ? early : nil)
 				if retry == 0 { early = nil }
-				guard self.cameraFailed, retry == 0, !Task.isCancelled, self.isLocked else { break }
-				Self.logger.notice("Camera failed; restarting it once.")
-				try? await Task.sleep(for: .seconds(1))
-				guard !Task.isCancelled else { return }
+				guard self.cameraFailed, retry < retryDelays.count, !Task.isCancelled, self.isLocked,
+					!Self.manualInputObserved, !Self.displaysAreAsleep() else { break }
+				Self.logger.notice("Camera failed (try \(retry + 1)); restarting after a short settle.")
+				do { try await Task.sleep(for: retryDelays[retry]) }
+				catch { return }
+				guard !Task.isCancelled, self.isLocked, !Self.manualInputObserved, !Self.displaysAreAsleep() else { return }
 			}
 			if !Task.isCancelled, self.isLocked { self.watchPointerForRetry() }
 		}
@@ -182,6 +185,7 @@ extension LockWatcher {
 	internal func handleSpaceKey() {
 		lastSpaceAt = Date()
 		spacePresses += 1
+		reconcileScreenSaverState()
 		// Space is an explicit "look again", so it lifts the stand-down that earlier
 		// typing or a click caused for this lock. A password with a space in it is
 		// unaffected: Gaze clears the field before it types.
@@ -205,7 +209,7 @@ extension LockWatcher {
 			while !Task.isCancelled {
 				try? await Task.sleep(for: .milliseconds(500))
 				guard let self, !Task.isCancelled, self.isLocked, !Self.manualInputObserved else { return }
-				guard self.attempt == nil,
+				guard !Self.displaysAreAsleep(), self.attempt == nil,
 					CGEventSource.counterForEventType(.hidSystemState, eventType: .mouseMoved) != moves
 				else { continue }
 				self.pointerRetry = nil
@@ -237,28 +241,29 @@ extension LockWatcher {
 	/// waiting state over a lock screen that never opened would insist something is
 	/// still in flight. Withdraw it instead.
 	internal func scheduleSubmissionConfirmationCheck(receiptID: UUID, identifier: UUID) {
-		DispatchQueue.main.asyncAfter(deadline: .now() + Self.unlockGracePeriod) {
-			[weak self] in
-			MainActor.assumeIsolated {
-				guard let self, self.isLocked, self.submissionID == receiptID else { return }
-				LockScanDiagnostics.shared.record(.submissionUnconfirmed, for: identifier)
-				Self.logger.notice("Screen did not unlock after submitting; withdrawing.")
-				self.submissionID = nil
-				self.didSubmitPassword = false
-				self.capsule.hide()
-				// The face already passed, so the usual reason is a saved password that no
-				// longer matches the account. Check once, off the main thread; if so, stop
-				// typing it and don't count the face against the lockout.
-				Task.detached(priority: .userInitiated) {
-					let stillMatches = (try? PasswordVault.password()).flatMap { $0 }.map { PasswordVault.verify($0) } ?? true
-					await MainActor.run {
-						if stillMatches {
-							self.lockout.recordFailure()
-						} else {
-							PasswordVault.isStale = true
-							StalePasswordNotice.post()
-							Self.logger.error("The saved password no longer matches this account; Gaze stops typing it until a new one is saved.")
-						}
+		submissionCheckTask?.cancel()
+		submissionCheckTask = Task { [weak self] in
+			do { try await Task.sleep(for: .seconds(Self.unlockGracePeriod)) }
+			catch { return }
+			guard let self, !Task.isCancelled, self.isLocked, self.submissionID == receiptID else { return }
+			self.submissionCheckTask = nil
+			LockScanDiagnostics.shared.record(.submissionUnconfirmed, for: identifier)
+			Self.logger.notice("Screen did not unlock after submitting; withdrawing.")
+			self.submissionID = nil
+			self.didSubmitPassword = false
+			self.capsule.hide()
+			// The face already passed, so the usual reason is a saved password that no
+			// longer matches the account. Check once, off the main thread; if so, stop
+			// typing it and don't count the face against the lockout.
+			Task.detached(priority: .userInitiated) {
+				let stillMatches = (try? PasswordVault.password()).flatMap { $0 }.map { PasswordVault.verify($0) } ?? true
+				await MainActor.run {
+					if stillMatches {
+						self.lockout.recordFailure()
+					} else {
+						PasswordVault.isStale = true
+						StalePasswordNotice.post()
+						Self.logger.error("The saved password no longer matches this account; Gaze stops typing it until a new one is saved.")
 					}
 				}
 			}
@@ -330,13 +335,17 @@ extension LockWatcher {
 		}
 		await warmUp.value
 
-		guard camera.state == .running, camera.boundDeviceID == context.pinnedCamera, inputMonitor.requestIsCurrent() else {
+		guard inputMonitor.requestIsCurrent() else {
+			camera.stop()
+			return nil
+		}
+		guard camera.state == .running, camera.boundDeviceID == context.pinnedCamera else {
 			camera.stop()
 			if inputMonitor.contextIsCurrent() {
 				telemetry.report(.cameraUnavailable)
 				cameraFailed = true
 			}
-			Self.logger.error("Camera unavailable: \(String(describing: camera.state))")
+			Self.logger.error("Camera unavailable: \(String(describing: camera.state), privacy: .public)")
 			return nil
 		}
 		cameraRunningAt = .now

@@ -22,7 +22,7 @@ extension NotchCapsule {
 	/// height. The floor and the divisor are unchanged, so the retracting animation still
 	/// keeps its rounded lip all the way down; only the ceiling moved.
 	private var cornerRadius: CGFloat {
-		usesCompactBar ? 9 : min(26, max(9, max(0, visibleHeight) / 1.9))
+		usesCompactBar ? 9 : min(36, max(9, max(0, visibleHeight) / 1.9))
 	}
 
 	// MARK: - Island
@@ -412,11 +412,11 @@ extension NotchCapsule {
 	/// begins: the tick appeared larger and lower than the face that had just been there, so
 	/// the whole mark seemed to jump. The band is now always held, so the mark is one size in
 	/// every phase of the drop and only the caption fades in and out beneath it.
-	private static let captionBand: CGFloat = 28
+	private static let captionBand: CGFloat = 30
 	internal var glyphSide: CGFloat {
 		model.shape == .island
 			? min(islandWidth, islandHeight) * 0.62
-			: min(width, max(0, visibleHeight - Self.captionBand)) * 0.68
+			: min(width, max(0, visibleHeight - Self.captionBand)) * 0.80
 	}
 
 	/// Sits high in the drop, where the panel is still dark enough to carry it.

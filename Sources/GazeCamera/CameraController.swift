@@ -3,6 +3,7 @@ import AppKit
 import CoreImage
 import GazeCore
 import Observation
+import os
 import Synchronization
 import Vision
 
@@ -208,6 +209,12 @@ package final class CameraController {
 		case running
 	}
 
+	private static let logger = Logger(subsystem: AppIdentity.loggerSubsystem, category: "Camera")
+	/// Maximum time to wait for a camera device that is still suspended (`isSuspended == true`)
+	/// or re-enumerating right after macOS wakes from Sleep. Zero delay when already awake.
+	private static let lockScreenWakeReadinessTimeout: Duration = .milliseconds(2500)
+	private static let foregroundWakeReadinessTimeout: Duration = .milliseconds(1000)
+
 	package let analysisMode: CameraAnalysisMode
 	package private(set) var state: State = .idle
 	package private(set) var evidenceContinuity = CameraEvidenceContinuity()
@@ -241,6 +248,7 @@ package final class CameraController {
 	private var starting = false
 	private var clearPendingDelivery: (() -> Void)?
 	private var observers: [NSObjectProtocol] = []
+	private let accessScope: CameraSessionGate.Scope
 	private let sessionGate: CameraSessionGate
 
 	/// `allowsBystanders`: when several faces are in view, analyse up to three of them and
@@ -252,6 +260,7 @@ package final class CameraController {
 		analysisMode: CameraAnalysisMode = .full
 	) {
 		self.analysisMode = analysisMode
+		self.accessScope = accessScope
 		sessionGate = CameraSessionGate(scope: accessScope)
 		capture.analysisMode = analysisMode
 		capture.allowsBystanders = allowsBystanders ?? (accessScope == .lockScreen)
@@ -260,9 +269,12 @@ package final class CameraController {
 		// Presence-only mode runs only face rectangles, so 720p/30fps is always sufficient.
 		capture.fastFrames = analysisMode == .presenceOnly || (accessScope == .lockScreen && !Self.followLightOffered)
 		for name in [AVCaptureSession.runtimeErrorNotification, AVCaptureSession.wasInterruptedNotification] {
-			observers.append(NotificationCenter.default.addObserver(forName: name, object: capture.session, queue: .main) { [weak self] _ in
+			observers.append(NotificationCenter.default.addObserver(forName: name, object: capture.session, queue: .main) { [weak self] note in
+				let reason = (note.userInfo?[AVCaptureSessionErrorKey] as? NSError)?.localizedDescription
+					?? name.rawValue
 				MainActor.assumeIsolated {
 					guard let self, self.lease.generation != nil else { return }
+					Self.logger.error("Capture session stopped unexpectedly: \(reason, privacy: .public)")
 					self.stop()
 					self.state = .failed("Camera capture was interrupted. Try again.")
 				}
@@ -271,6 +283,58 @@ package final class CameraController {
 	}
 
 	// MARK: - Lifecycle
+
+	/// Resolves the trusted camera and waits briefly if the hardware is still suspended
+	/// (`device.isSuspended == true`) or re-enumerating immediately after macOS Sleep/Wake.
+	private func resolveReadyDevice(pinnedDeviceID: String?, generation: UUID) async throws -> AVCaptureDevice? {
+		let allowExternal = Preferences.shared.allowExternalCamera
+		let timeout = accessScope == .lockScreen ? Self.lockScreenWakeReadinessTimeout : Self.foregroundWakeReadinessTimeout
+		let waitStarted = ContinuousClock.now
+		let deadline = waitStarted.advanced(by: timeout)
+		var loggedSuspended = false
+		var loggedMissing = false
+		var lastError: Error?
+
+		while true {
+			guard !Task.isCancelled, lease.generation == generation, sessionGate.isValid else { return nil }
+			do {
+				let device = try CameraDevice.trusted(pinnedID: pinnedDeviceID, allowExternal: allowExternal)
+				if !device.isSuspended {
+					if loggedSuspended || loggedMissing {
+						let elapsed = waitStarted.duration(to: .now).components
+						let ms = elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000
+						Self.logger.notice("Camera device became ready after \(ms)ms.")
+					}
+					return device
+				}
+				if !loggedSuspended {
+					loggedSuspended = true
+					Self.logger.notice("Camera device is suspended after sleep; waiting for hardware wake.")
+				}
+				if ContinuousClock.now >= deadline {
+					Self.logger.error("Camera device remained suspended past wake readiness timeout.")
+					throw NSError(
+						domain: AppIdentity.bundleIdentifier, code: 3,
+						userInfo: [NSLocalizedDescriptionKey: "The camera is still waking from sleep."])
+				}
+				do { try await Task.sleep(for: .milliseconds(50)) }
+				catch { return nil }
+			} catch {
+				lastError = error
+				// Only retry device discovery during lock-screen wake (e.g. USB webcam
+				// re-enumerating after Sleep); foreground setup/test fails immediately.
+				guard accessScope == .lockScreen, ContinuousClock.now < deadline else {
+					throw lastError ?? error
+				}
+				if !loggedMissing {
+					loggedMissing = true
+					Self.logger.notice("Camera device temporarily unavailable after wake; retrying briefly.")
+				}
+				do { try await Task.sleep(for: .milliseconds(100)) }
+				catch { return nil }
+			}
+		}
+	}
 
 	package func start(pinnedDeviceID: String? = nil) async {
 		guard state != .running, !starting, !Task.isCancelled else { return }
@@ -291,8 +355,8 @@ package final class CameraController {
 		}
 
 		let authorized = await requestAccess()
-		guard lease.generation == generation, sessionGate.isValid else { return }
-		guard !Task.isCancelled else { stop(); return }
+		guard lease.generation == generation else { return }
+		guard sessionGate.isValid, !Task.isCancelled else { stop(); return }
 		guard authorized else {
 			stop()
 			state = .denied
@@ -301,8 +365,13 @@ package final class CameraController {
 
 		let device: AVCaptureDevice
 		do {
-			device = try CameraDevice.trusted(pinnedID: pinnedDeviceID, allowExternal: Preferences.shared.allowExternalCamera)
+			guard let resolved = try await resolveReadyDevice(pinnedDeviceID: pinnedDeviceID, generation: generation) else {
+				if lease.generation == generation { stop() }
+				return
+			}
+			device = resolved
 		} catch {
+			guard lease.generation == generation else { return }
 			stop()
 			state = .failed(String(describing: error))
 			return
@@ -328,8 +397,8 @@ package final class CameraController {
 					self.deliver(delivery.element, droppedBefore: delivery.droppedBefore, generation: generation)
 				}
 			}
-			guard lease.generation == generation, sessionGate.isValid else { return }
-			guard !Task.isCancelled else { stop(); return }
+			guard lease.generation == generation else { return }
+			guard sessionGate.isValid, !Task.isCancelled else { stop(); return }
 			guard running else {
 				stop()
 				state = .failed("The camera did not start delivering video.")

@@ -112,7 +112,7 @@ package actor UnlockFrameEvaluator {
 		classifierSpoofFrames = 0
 	}
 
-	package func evaluate(_ sample: FaceSample) -> Result {
+	package func evaluate(_ sample: FaceSample, settlingExposure: Bool = false) -> Result {
 		guard !Task.isCancelled else { return .rejected(.cancelled) }
 		guard !faces.isEmpty else { return .rejected(.noEnrollment) }
 		guard FrameQuality.isUsable(sample) else { return .rejected(.unusableFrame) }
@@ -128,7 +128,7 @@ package actor UnlockFrameEvaluator {
 		guard let best else { return .rejected(.noEnrollment) }
 		let matched = best.score >= embedder.matchThreshold
 		if matched {
-			let deny = denyChecked(sample)
+			let deny = denyChecked(sample, settlingExposure: settlingExposure)
 			guard !Task.isCancelled else { return .rejected(.cancelled) }
 			return Result(matched: true, score: best.score, face: faces[best.index],
 				spoofDecision: deny.decision, matchedPrint: candidate,
@@ -142,7 +142,7 @@ package actor UnlockFrameEvaluator {
 			let upperBest = try? upperMatcher.bestMatch(to: upper),
 			upperBest.index < upperFaceIndices.count,
 			upperBest.score >= embedder.matchThreshold + 0.05 {
-			let deny = denyChecked(sample)
+			let deny = denyChecked(sample, settlingExposure: settlingExposure)
 			guard !Task.isCancelled else { return .rejected(.cancelled) }
 			return Result(matched: true, score: upperBest.score, face: faces[upperFaceIndices[upperBest.index]],
 				spoofDecision: deny.decision, matchedPrint: upper, viaUpperFace: true,
@@ -155,7 +155,14 @@ package actor UnlockFrameEvaluator {
 	/// The classifier verdict plus the passive deny cues. The cues run only on frames
 	/// the classifier already calls live, with anti-spoof always on, and can only turn
 	/// a live frame into a spoof rejection — never the reverse.
-	private func denyChecked(_ sample: FaceSample) -> (decision: AntiSpoofGate.Decision?, confidence: Float?, didRunClassifier: Bool) {
+	///
+	/// When `settlingExposure` is true (the first ~450 ms after a cold camera wakes from
+	/// sleep while auto-exposure ramps up), classifier flags still fail closed as `.suspect`
+	/// (blocking match hold and unlock) without accumulating toward a lockout rejection.
+	private func denyChecked(
+		_ sample: FaceSample,
+		settlingExposure: Bool
+	) -> (decision: AntiSpoofGate.Decision?, confidence: Float?, didRunClassifier: Bool) {
 		guard let antiSpoof else { return (nil, nil, false) }
 		// Same 2.7x context crop the learned detector sees (224 px, the Spoof
 		// model's input side); render once and share across classifier, bezel, and glare.
@@ -170,6 +177,9 @@ package actor UnlockFrameEvaluator {
 		let (rawDecision, confidence) = antiSpoof.evaluate(sample, contextCrop: sharedCrop)
 		let didRun = antiSpoof.isActive
 		if case .spoof(_, let score) = rawDecision {
+			if settlingExposure {
+				return (.suspect(score: score), confidence, didRun)
+			}
 			classifierSpoofFrames += 1
 			let decision: AntiSpoofGate.Decision = classifierSpoofFrames >= Self.classifierFireFrames ? rawDecision : .suspect(score: score)
 			return (decision, confidence, didRun)

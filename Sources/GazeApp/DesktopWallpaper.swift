@@ -19,6 +19,12 @@ struct WallpaperLoadGate {
 	private var loadedURL: URL?
 	private(set) var pendingRequest: Request?
 	private var retryAfter: [URL: Date] = [:]
+	private var failureCounts: [URL: Int] = [:]
+
+	/// Retry backoff for consecutive decode failures on the same URL:
+	/// 10 s on the first failure (handles transient writes), then 30 s, 90 s, capped at 300 s
+	/// so permanently unreadable dynamic/aerial wallpapers don't spin every 10 seconds forever.
+	private static let backoffSchedule: [TimeInterval] = [10, 30, 90, 300]
 
 	mutating func request(for url: URL, now: Date) -> Request? {
 		guard pendingRequest?.url != url else { return nil }
@@ -39,9 +45,13 @@ struct WallpaperLoadGate {
 		if succeeded {
 			loadedURL = request.url
 			retryAfter.removeValue(forKey: request.url)
+			failureCounts.removeValue(forKey: request.url)
 		} else {
 			loadedURL = nil
-			retryAfter[request.url] = now.addingTimeInterval(10)
+			let failures = (failureCounts[request.url] ?? 0) + 1
+			failureCounts[request.url] = failures
+			let delay = Self.backoffSchedule[min(failures - 1, Self.backoffSchedule.count - 1)]
+			retryAfter[request.url] = now.addingTimeInterval(delay)
 		}
 		return true
 	}
@@ -51,6 +61,7 @@ struct WallpaperLoadGate {
 		loadedURL = nil
 		pendingRequest = nil
 		retryAfter.removeAll()
+		failureCounts.removeAll()
 	}
 }
 
@@ -149,6 +160,7 @@ package final class DesktopWallpaper {
 	@ObservationIgnored private var loadGate = WallpaperLoadGate()
 	@ObservationIgnored private var loadTask: Task<Void, Never>?
 	@ObservationIgnored private var reportedUnresolvedURL = false
+	@ObservationIgnored private var lastReportedFailedURL: URL?
 	@ObservationIgnored private var storeMonitor: WallpaperStoreMonitor?
 	@ObservationIgnored private var workspaceObserver: NSObjectProtocol?
 	@ObservationIgnored private var appActiveObserver: NSObjectProtocol?
@@ -285,7 +297,12 @@ package final class DesktopWallpaper {
 			self.image = blurred
 			self.loadTask = nil
 			if blurred == nil {
-				self.logger.notice("Could not decode the desktop picture; keeping the plain ground.")
+				if self.lastReportedFailedURL != request.url {
+					self.lastReportedFailedURL = request.url
+					self.logger.notice("Could not decode the desktop picture; keeping the plain ground.")
+				}
+			} else {
+				self.lastReportedFailedURL = nil
 			}
 		}
 	}

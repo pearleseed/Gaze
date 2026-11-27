@@ -28,8 +28,11 @@ package final class NotchCapsuleController {
 	private var host: NSHostingView<AnyView>?
 	private var expansionTask: Task<Void, Never>?
 	private var dismissalTask: Task<Void, Never>?
+	private var screenObserver: NSObjectProtocol?
 	private var contentSize: CGSize = .zero
 	private var builtChallengeRoom: CGFloat = 0
+	private var builtHasNotch: Bool = false
+	private var builtCutoutWidth: CGFloat = 180
 	/// Height of the region hidden behind the physical cutout, so the glyph can be
 	/// centred in the visible part rather than in the whole window.
 	private var notchInset: CGFloat = 0
@@ -46,6 +49,64 @@ package final class NotchCapsuleController {
 
 	package init(usesLockScreenSpace: Bool = true) {
 		self.usesLockScreenSpace = usesLockScreenSpace
+		screenObserver = NotificationCenter.default.addObserver(
+			forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+		) { [weak self] _ in
+			MainActor.assumeIsolated { self?.repositionForScreenChange() }
+		}
+	}
+
+	isolated deinit {
+		if let screenObserver {
+			NotificationCenter.default.removeObserver(screenObserver)
+		}
+	}
+
+	private static func targetScreen() -> NSScreen? {
+		NSScreen.main ?? NSScreen.screens.first
+	}
+
+	/// Updates the active window frame and SwiftUI hosting view if screen geometry or
+	/// notch metrics changed (e.g. external monitor reconnecting right after wake).
+	private func syncGeometry(on screen: NSScreen, for window: NSWindow) {
+		let next = geometry(on: screen)
+		let hasNotch = NotchMetrics.hasNotch(on: screen)
+		let cutoutWidth = NotchMetrics.width(on: screen) ?? 180
+		let needsRebuild = next.contentSize != contentSize || next.notchInset != notchInset
+			|| hasNotch != builtHasNotch || cutoutWidth != builtCutoutWidth
+		guard window.frame != next.windowFrame || next.challengeRoom != builtChallengeRoom || needsRebuild else { return }
+		window.setFrame(next.windowFrame, display: true)
+		contentSize = next.contentSize
+		notchInset = next.notchInset
+		builtChallengeRoom = next.challengeRoom
+		builtHasNotch = hasNotch
+		builtCutoutWidth = cutoutWidth
+		let windowSize = next.windowFrame.size
+		if needsRebuild {
+			let newHost = NSHostingView(
+				rootView: AnyView(
+					NotchCapsule(
+						model: model, width: next.contentSize.width, height: next.contentSize.height,
+						notchInset: next.notchInset,
+						cutoutWidth: cutoutWidth,
+						hasNotch: hasNotch)
+						.frame(width: windowSize.width, height: windowSize.height, alignment: .top)))
+			newHost.frame = NSRect(origin: .zero, size: windowSize)
+			window.contentView = newHost
+			self.host = newHost
+		} else {
+			host?.frame = NSRect(origin: .zero, size: windowSize)
+		}
+	}
+
+	/// Repositions and re-adopts an active capsule when displays reconfigure right after
+	/// waking from Sleep (common when an external monitor reconnects).
+	private func repositionForScreenChange() {
+		guard let window, let screen = Self.targetScreen() else { return }
+		syncGeometry(on: screen, for: window)
+		syncBackdrop(for: window)
+		window.orderFrontRegardless()
+		if usesLockScreenSpace { LockScreenSpace.shared.adopt(window) }
 	}
 
 	/// Last build outcome, so the missing-space state is readable from Settings diagnostics rather than the log alone.
@@ -67,7 +128,7 @@ package final class NotchCapsuleController {
 		model.phase = phase
 		announce(phase: phase)
 
-		if let screen = NSScreen.main {
+		if let screen = Self.targetScreen() {
 			model.lightBehind = WallpaperBrightness.isLight(on: screen)
 		}
 		model.style = Preferences.shared.notchStyle
@@ -85,15 +146,8 @@ package final class NotchCapsuleController {
 		}
 
 		guard let window else { return }
-		if !needsMount, let screen = NSScreen.main {
-			let next = geometry(on: screen)
-			if next.challengeRoom != builtChallengeRoom {
-				window.setFrame(next.windowFrame, display: true)
-				host?.frame = NSRect(origin: .zero, size: next.windowFrame.size)
-				contentSize = next.contentSize
-				notchInset = next.notchInset
-				builtChallengeRoom = next.challengeRoom
-			}
+		if !needsMount, let screen = Self.targetScreen() {
+			syncGeometry(on: screen, for: window)
 		}
 		syncBackdrop(for: window)
 		window.alphaValue = 1
@@ -225,7 +279,7 @@ package final class NotchCapsuleController {
 	/// screen and window frame rather than per show or per frame. Decoded off the main
 	/// thread: a 6K HEIC takes long enough to hold up the panel appearing.
 	private func syncBackdrop(for window: NSWindow) {
-		guard model.style == .liquidGlass, let screen = NSScreen.main else {
+		guard model.style == .liquidGlass, let screen = Self.targetScreen() else {
 			model.backdrop = nil
 			backdropKey = nil
 			return
@@ -303,14 +357,14 @@ package final class NotchCapsuleController {
 		//
 		// The island, the dynamic island and the ear flank carry their captions inline,
 		// so none reserves room below.
-		let challengeRoom: CGFloat = (isIsland || isDynamicIsland || isEarFlank) ? 0 : 30
+		let challengeRoom: CGFloat = (isIsland || isDynamicIsland || isEarFlank) ? 0 : ConnectedMetrics.challengeRoom
 		// The dynamic island's expanded state is up to 340 x 44 below a 6pt gap, plus
 		// shadow room underneath — mirrors DynamicIslandMetrics in NotchCapsule,
 		// which this file cannot see (it is private to the view).
 		let dropHeight =
 			(isIsland ? IslandMetrics.dropHeight(cutoutWidth: cutout)
 				: isDynamicIsland ? (6 + 44 + IslandMetrics.shadowRoom)
-				: isEarFlank ? 8 : 66)
+				: isEarFlank ? 8 : ConnectedMetrics.baseDropHeight)
 			+ challengeRoom
 			+ Preferences.shared.notchHeightAdjust
 		// The ear flank widens its face side to fit a caption (EarFlankMetrics in
@@ -330,16 +384,20 @@ package final class NotchCapsuleController {
 	}
 
 	private func build() {
-		guard let screen = NSScreen.main else { return }
+		guard let screen = Self.targetScreen() else { return }
 
 		let next = geometry(on: screen)
 		let notchHeight = next.notchInset
 		let size = next.contentSize
 		let frame = next.windowFrame
 		let windowSize = frame.size
+		let cutoutWidth = NotchMetrics.width(on: screen) ?? 180
+		let hasNotch = NotchMetrics.hasNotch(on: screen)
 		self.contentSize = size
 		self.notchInset = notchHeight
 		self.builtChallengeRoom = next.challengeRoom
+		self.builtHasNotch = hasNotch
+		self.builtCutoutWidth = cutoutWidth
 
 		let window = UnfocusableWindow(
 			contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -370,8 +428,8 @@ package final class NotchCapsuleController {
 				NotchCapsule(
 					model: model, width: size.width, height: size.height,
 					notchInset: notchHeight,
-					cutoutWidth: NotchMetrics.width(on: screen) ?? 180,
-					hasNotch: NotchMetrics.hasNotch(on: screen))
+					cutoutWidth: cutoutWidth,
+					hasNotch: hasNotch)
 					.frame(width: windowSize.width, height: windowSize.height, alignment: .top)))
 		host.frame = NSRect(origin: .zero, size: windowSize)
 		window.contentView = host

@@ -166,6 +166,40 @@ struct WallpaperRequestsTests {
 		let freshAccepted = gate.complete(fresh, succeeded: true, now: now)
 		#expect(freshAccepted)
 	}
+
+	@Test func repeatedFailuresBackOffExponentiallyAndResetOnSuccess() throws {
+		var gate = WallpaperLoadGate()
+		var t = now
+
+		// 1st failure -> 10s, 2nd -> 30s, 3rd -> 90s, 4th+ -> capped at 300s.
+		for expectedCooldown: TimeInterval in [10, 30, 90, 300, 300] {
+			let pending = gate.request(for: a, now: t)
+			let request = try #require(pending)
+			let recorded = gate.complete(request, succeeded: false, now: t)
+			#expect(recorded)
+			let stillCooling = gate.request(for: a, now: t.addingTimeInterval(expectedCooldown - 0.1)) == nil
+			#expect(stillCooling)
+			t = t.addingTimeInterval(expectedCooldown)
+		}
+
+		// Recovery clears the backoff counter so a later failure starts back at 10s.
+		let recoveredPending = gate.request(for: a, now: t)
+		let recovered = try #require(recoveredPending)
+		let recoveredOK = gate.complete(recovered, succeeded: true, now: t)
+		#expect(recoveredOK)
+		let otherPending = gate.request(for: b, now: t)
+		let other = try #require(otherPending)
+		let otherOK = gate.complete(other, succeeded: true, now: t)
+		#expect(otherOK)
+		let afterResetPending = gate.request(for: a, now: t)
+		let afterReset = try #require(afterResetPending)
+		let failedAgain = gate.complete(afterReset, succeeded: false, now: t)
+		#expect(failedAgain)
+		let cooledBeforeTen = gate.request(for: a, now: t.addingTimeInterval(9.9)) == nil
+		#expect(cooledBeforeTen)
+		let retriedAtTen = gate.request(for: a, now: t.addingTimeInterval(10)) != nil
+		#expect(retriedAtTen)
+	}
 }
 
 /// Intercepts every request from the test configuration; nothing reaches the network.

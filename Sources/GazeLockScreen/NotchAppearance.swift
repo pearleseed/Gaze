@@ -19,6 +19,19 @@ package enum IslandMetrics {
 	}
 }
 
+/// The connected panel's drop measurements, in one place.
+///
+/// Shared between the lock screen controller and previews so the panel and its
+/// animation scale identically (~200pt total height on a 32pt notch, matching Glance).
+package enum ConnectedMetrics {
+	/// Reserved room for captions below the mark — always held so the mark never jumps.
+	package static let challengeRoom: CGFloat = 30
+	/// Base drop below the notch housing before `challengeRoom`.
+	package static let baseDropHeight: CGFloat = 138
+	/// Total visible drop below the notch housing (`baseDropHeight + challengeRoom`).
+	package static let dropHeight: CGFloat = baseDropHeight + challengeRoom
+}
+
 /// The panel's timings, in one place.
 ///
 /// They have to be shared, because the controller tears the window down on a timer and the

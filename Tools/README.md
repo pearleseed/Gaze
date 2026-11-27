@@ -33,7 +33,10 @@ files recorded in [the inventory](Release/ModelClearance/clearance.json).
 See [NOTICE.md](../NOTICE.md) for model sources and redistribution terms.
 
 Run `bash Tools/Release/preflight.sh` to check the release prerequisites.
-Build each target separately (`GAZE_REQUIRE_DEVELOPER_ID=1` enforces a Developer ID Application signature; otherwise `Signing.sh` defaults to un-notarized signing).
+Build each target separately:
+- By default (`GAZE_REQUIRE_DEVELOPER_ID=0`), `DIST=1` signs with **Developer ID Application** if installed, and otherwise signs **ad-hoc (`-`)** with Hardened Runtime instead of falling back to a personal `Apple Development` certificate — so release bundles stay portable across Macs, never expire, do not embed a personal developer email, and stay compatible with `UpdateInstaller`'s ad-hoc verification.
+- Local builds (`./build.sh` without `DIST=1`) continue using your local `Apple Development` identity so Keychain and TCC permissions stay stable on your Mac.
+- Set `GAZE_REQUIRE_DEVELOPER_ID=1` to enforce a `Developer ID Application` signature for notarized releases (or pass `GAZE_SIGNING_IDENTITY=<id>` to override explicitly).
 
 ```sh
 DIST=1 GAZE_ARCHS=arm64 bash build.sh

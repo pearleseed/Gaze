@@ -10,11 +10,16 @@ FIXTURE="  1) $DEV_HASH \"Apple Development: Test (TEAM)\"
 DEV_ONLY="  1) $DEV_HASH \"Apple Development: Test (TEAM)\"
      1 valid identities found"
 
-# Default 1B un-notarized posture (GAZE_REQUIRE_DEVELOPER_ID=0 by default).
+# Default 1B un-notarized posture (GAZE_REQUIRE_DEVELOPER_ID=0 by default):
+# - Local builds (mode 0) keep using Apple Development when present.
+# - Distribution builds (mode 1) prefer Developer ID Application, and otherwise
+#   default to portable ad-hoc ('-') rather than embedding a personal Apple Development cert.
 unset GAZE_REQUIRE_DEVELOPER_ID || true
 test "$(gaze_signing_identity 0 '' "$FIXTURE")" = "$DEV_HASH"
+test "$(gaze_signing_identity 0 '' "$DEV_ONLY")" = "$DEV_HASH"
 test "$(gaze_signing_identity 1 '' "$FIXTURE")" = "$RELEASE_HASH"
-test "$(gaze_signing_identity 1 '' "$DEV_ONLY")" = "$DEV_HASH"
+test "$(gaze_signing_identity 1 '' "$DEV_ONLY")" = '-'
+test "$(gaze_signing_identity 1 "$DEV_HASH" "$DEV_ONLY")" = "$DEV_HASH"
 test "$(gaze_signing_identity 1 '' '0 valid identities found')" = '-'
 test "$(gaze_signing_identity 1 '-' "$FIXTURE")" = '-'
 test "$(gaze_signing_identity 0 '-' "$FIXTURE")" = '-'

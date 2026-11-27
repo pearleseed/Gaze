@@ -180,10 +180,11 @@ package struct NotchCapsule: View {
 			}
 
 			if showsDrop && !isIsland && !isEarFlank && !isDynamicIsland {
-				VStack(spacing: 7) {
+				VStack(spacing: 9) {
 					content
 						.frame(width: glyphSide, height: glyphSide)
 					challengeCaption
+						.padding(.horizontal, 16)
 				}
 					.animation(reduceMotion ? nil : NotchAnimation.feedback, value: model.phase.captionText)
 					// Centred in the solid band — not the whole window (whose top third is

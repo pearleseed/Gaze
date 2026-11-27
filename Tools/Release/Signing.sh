@@ -26,15 +26,12 @@ gaze_signing_identity() {
 				}
 				if (is_dev_id && dev_id == "") {
 					dev_id = $2
-				} else if (is_apple_dev && apple_dev == "") {
-					apple_dev = $2
 				}
 			}
 		}
 		END {
 			if (requested == "" && mode == "1") {
 				if (dev_id != "") print dev_id
-				else if (apple_dev != "") print apple_dev
 			}
 		}')"
 	if [ -z "$selected" ]; then
@@ -44,7 +41,7 @@ gaze_signing_identity() {
 		fi
 		if [ "$strict" = "1" ]; then
 			echo "Release signing requires a valid Developer ID Application identity. Ad-hoc and Apple Development signatures are not accepted." >&2
-			echo "Set GAZE_REQUIRE_DEVELOPER_ID=0 for un-notarized Apple Development or ad-hoc (-) signing, or install a Developer ID Application certificate." >&2
+			echo "Set GAZE_REQUIRE_DEVELOPER_ID=0 for portable ad-hoc (-) release signing, or install a Developer ID Application certificate." >&2
 		else
 			echo "Local builds require a valid Apple Development or Developer ID Application identity (or pass '-' for ad-hoc); the existing app was not replaced." >&2
 		fi

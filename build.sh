@@ -143,6 +143,8 @@ PAM="$STAGE/Contents/Resources/pam_gaze.so"
 
 if [ "${DIST:-}" = "1" ] && [ "$REQUIRE_DEVELOPER_ID" = "1" ]; then
 	echo "→ Signing release with Developer ID"
+elif [ "${DIST:-}" = "1" ] && [ "$IDENTITY" = "-" ]; then
+	echo "→ Signing release ad-hoc (-) for cross-Mac portability"
 elif [ "${DIST:-}" = "1" ]; then
 	echo "→ Signing release ($IDENTITY)"
 else

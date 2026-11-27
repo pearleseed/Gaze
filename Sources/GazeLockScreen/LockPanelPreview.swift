@@ -48,7 +48,7 @@ package enum LockPanelPreview {
 
 		let panelWidth = cutout * 1.56
 		let panelHeight = notchHeight
-			+ (model.shape == .island ? IslandMetrics.dropHeight(cutoutWidth: cutout) : 96)
+			+ (model.shape == .island ? IslandMetrics.dropHeight(cutoutWidth: cutout) : ConnectedMetrics.dropHeight)
 		let view = ZStack(alignment: .top) {
 			Image(decorative: wallpaper, scale: 1)
 				.resizable()

@@ -61,6 +61,11 @@ extension LockWatcher {
 	/// How long Follow the light shows its tick before the next prompt or the unlock.
 	private static let lookConfirmation: Duration = .milliseconds(300)
 
+	/// Cold cameras waking from sleep spend ~400 ms ramping auto-exposure and white balance.
+	/// During this brief window, spoof-flagged frames are still skipped (fail-closed) without
+	/// committing a hard lockout rejection, matching `SceneBrightness`'s exposure settle.
+	private static let exposureSettleWindow: Duration = .milliseconds(450)
+
 	/// Intersection over union of two Vision-normalized boxes. Same space on both sides
 	/// is all it needs; the values never leave this comparison.
 	private static func overlap(_ a: CGRect, _ b: CGRect) -> CGFloat {
@@ -107,13 +112,14 @@ extension LockWatcher {
 		/// When the current unbroken run of matching frames began.
 		var matchingHold = RecognitionMatchHold()
 		var rejectionHold = RecognitionRejectionHold()
-		/// The last moment anybody was in front of the camera.
-		var lastFaceAt = Date()
+		/// The last moment a usable (or dim-room blurred, full-size) face was in front of
+		/// the camera. Monotonic so NTP clock jumps on wake from Sleep cannot skew timeouts.
+		var lastFaceAt = ContinuousClock.now
 		/// Set after a rejection, so the next try starts from a clean slate.
 		var cooldownUntil: ContinuousClock.Instant?
 		/// When the current run of too-blurred frames began, so a second of them
 		/// can ask for light before the search gives up on the face.
-		var blurredSince: Date?
+		var blurredSince: ContinuousClock.Instant?
 		/// Box of the last matched face. The next frame's candidates are tried in
 		/// overlap order so the tracked subject is re-found without embedding the
 		/// other faces when it is still there.
@@ -250,10 +256,9 @@ extension LockWatcher {
 				if !secondFace, ridesOutInterruption("face unavailable") { continue }
 				// Face left the frame — both runs are broken and start again from zero.
 				resetTracking(reason: "face unavailable")
-				if Date().timeIntervalSince(lastFaceAt) >= Self.searchWindow { break }
+				if lastFaceAt.duration(to: .now) >= .seconds(Self.searchWindow) { break }
 				continue
 			}
-			lastFaceAt = Date()
 			lastFacePixelBuffer = sample.pixelBuffer
 
 			// A beat after a rejection before looking again, so the panel has time to say
@@ -285,19 +290,23 @@ extension LockWatcher {
 				let qualityRejection = FrameQuality.rejection(sample)
 				telemetry.recordQualityRejection(qualityRejection)
 				if case .tooBlurred = qualityRejection {
-					// A run of blurred faces is often the camera asking for light, not
-					// the person refusing to hold still. A second of it is enough to ask.
-					let since = blurredSince ?? Date()
+					// A full-size face blurred by a dim room still counts as present while
+					// the edge light warms up; tiny distant posters (.tooSmall) do not.
+					lastFaceAt = .now
+					let since = blurredSince ?? .now
 					blurredSince = since
 					// Only in a dim room: in daylight a blurred face is just movement.
 					if Preferences.shared.screenGlowInDark, !LockScreenLight.shared.isShowing,
-						Date().timeIntervalSince(since) >= 1,
+						since.duration(to: .now) >= .seconds(1),
 						let brightness = SceneBrightness.current(), brightness < 0.25 {
 						LockScreenLight.shared.show()
 					}
+				} else if lastFaceAt.duration(to: .now) >= .seconds(Self.searchWindow) {
+					break
 				}
 				continue
 			}
+			lastFaceAt = .now
 			blurredSince = nil
 
 			let sampleFrameID = camera.frameID
@@ -307,8 +316,9 @@ extension LockWatcher {
 				evaluatedContinuity = sampleContinuity
 			}
 			guard let sampleCapturedAt = camera.lastFrameCapturedAt else { continue }
+			let settlingExposure = firstFrameAt.map { $0.duration(to: .now) < Self.exposureSettleWindow } ?? true
 			let inferenceStarted = ContinuousClock.now
-			var result = await evaluator.evaluate(usable[0])
+			var result = await evaluator.evaluate(usable[0], settlingExposure: settlingExposure)
 			var frameBest = result.score
 			var matchedSample: FaceSample? = result.matched ? usable[0] : nil
 			// The tracked subject is tried first and the rest are skipped when it
@@ -318,7 +328,7 @@ extension LockWatcher {
 			// Every later check (anti-spoof, movement) runs on the matched face.
 			if matchedSample == nil {
 				for candidate in usable.dropFirst() {
-					let next = await evaluator.evaluate(candidate)
+					let next = await evaluator.evaluate(candidate, settlingExposure: settlingExposure)
 					frameBest = max(frameBest, next.score)
 					if next.matched {
 						result = next
@@ -499,6 +509,7 @@ extension LockWatcher {
 			let proofStillCurrent = { inputMonitor.proofStillCurrent(camera: camera,
 				sampleContinuity: sampleContinuity, sampleCapturedAt: sampleCapturedAt, challengeGate: challengeGate) }
 			guard proofStillCurrent() else {
+				Self.logger.notice("Proof became invalid before password submission: guidance=\(self.capsule.canPresentGuidance) running=\(camera.state == .running) verified=\(challengeGate.isVerified).")
 				capsule.hide()
 				return
 			}

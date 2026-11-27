@@ -25,7 +25,9 @@ package struct NotchPreviewCanvas: View {
 	}
 
 	private var panelSize: CGSize {
-		CGSize(width: 278 + widthAdjust, height: (model.shape == .island ? 244 : 128) + heightAdjust)
+		CGSize(
+			width: 278 + widthAdjust,
+			height: (model.shape == .island ? 244 : 32 + ConnectedMetrics.dropHeight) + heightAdjust)
 	}
 
 	package var body: some View {

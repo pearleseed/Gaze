@@ -1,6 +1,6 @@
 import AppKit
 import GazeDesign
-import GazeLockScreen
+@testable import GazeLockScreen
 import SwiftUI
 import Testing
 
@@ -158,5 +158,32 @@ struct NotchLogicTests {
 			}
 		}
 		#expect(samples == 3 * 3 * 3 * 4 * 5 * 2)
+	}
+
+	@Test func connectedPanelAnimationMatchesGlanceScaleAndFitsCaptions() {
+		#expect(ConnectedMetrics.dropHeight == ConnectedMetrics.baseDropHeight + ConnectedMetrics.challengeRoom)
+		let notchInset: CGFloat = 32
+		let defaultHeight = notchInset + ConnectedMetrics.dropHeight
+		#expect(defaultHeight == 200)
+
+		let model = NotchCapsuleModel()
+		model.shape = .attached
+		model.glyphPlacement = .centred
+		model.phase = .scanning
+		model.isExpanded = true
+
+		let capsule = NotchCapsule(
+			model: model, width: 278, height: defaultHeight,
+			notchInset: notchInset, cutoutWidth: 180, hasNotch: true)
+		let nativeVideoSide = capsule.glyphSide * 1.30
+		#expect(nativeVideoSide >= 140 && nativeVideoSide <= 148)
+		#expect(capsule.glyphTop > notchInset + 8)
+		#expect(capsule.glyphTop + capsule.glyphSide + 30 < defaultHeight)
+
+		let compact = NotchCapsule(
+			model: model, width: 238, height: defaultHeight - 20,
+			notchInset: notchInset, cutoutWidth: 180, hasNotch: true)
+		#expect(compact.glyphTop > notchInset + 6)
+		#expect(compact.glyphTop + compact.glyphSide + 30 < defaultHeight - 20)
 	}
 }

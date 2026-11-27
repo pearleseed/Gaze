@@ -41,8 +41,8 @@ package final class LockWatcher {
 	internal var submissionID: UUID?
 	internal static var submissionBudget = LockScreenSubmissionBudget()
 	internal static var manualInputObserved = false
-	/// When the last wake trigger was honoured, so the pair of them counts as one.
-	internal var lastWakeTrigger: Date?
+	/// When the last wake trigger was honoured, so `didWake` + `screensDidWake` count as one.
+	internal var lastWakeTrigger: ContinuousClock.Instant?
 	/// Block-observer tokens, so `stop()` can actually unregister them.
 	internal var observers: [NSObjectProtocol] = []
 	package private(set) var isWatching = false
@@ -50,6 +50,13 @@ package final class LockWatcher {
 	/// Whether the screen saver is currently running. While it covers the screen,
 	/// scanning would light the camera with no panel visible.
 	internal var screenSaverRunning = false
+	internal var screenSaverStartedAt: ContinuousClock.Instant?
+	/// Whether the MacBook lid was closed when entering sleep, so only a true
+	/// closed→open lid transition uses `lidOpenSettle`.
+	internal var clamshellClosedAtSleep = false
+	/// Timestamp of the last sleep/display-sleep notification, used by `wakeProbe` to
+	/// wait briefly for `CGSSessionScreenIsLocked` or external displays to settle on wake.
+	internal var lastSleepAt: ContinuousClock.Instant?
 	/// When a look last had to turn the dark-room light on.
 	internal static var lightNeededAt: Date?
 	/// Listens for Space on the lock screen so it retries the scan. Started with the
@@ -72,6 +79,14 @@ package final class LockWatcher {
 	/// After a scan ends with the Mac still locked, waits for the pointer to move and
 	/// looks again, so trying once more does not mean closing the lid.
 	internal var pointerRetry: Task<Void, Never>?
+	/// Bounded re-check after a wake notification when displays or lock state are still
+	/// transitioning (common when waking from Apple → Sleep or with external monitors).
+	internal var wakeProbe: Task<Void, Never>?
+	/// Cancellable retry for `screenUnlocked()` when `AutofillConsoleSession` lags behind
+	/// `com.apple.screenIsUnlocked`.
+	internal var unlockRetryTask: Task<Void, Never>?
+	/// Cancellable grace check after password submission.
+	internal var submissionCheckTask: Task<Void, Never>?
 	/// Set by the attempt when the camera never started or stopped sending frames, the
 	/// one failure worth an automatic second try.
 	internal var cameraFailed = false
@@ -106,29 +121,16 @@ package final class LockWatcher {
 	/// without a login window in front of it.
 	private static let unlockAnimationDuration: TimeInterval = 3.0
 
-	/// Waking posts a system wake and a displays wake, moments apart. Both mean "look
-	/// now", and honouring both would tear the camera down and rebuild it mid-attempt.
-	private static let wakeDebounce: TimeInterval = 3.0
-	/// A beat for the camera to actually be awake before the first frame is asked for.
-	/// Opening it immediately after a wake returns a device that reports running and then
-	/// delivers black frames, which reads to the recogniser as "nobody there". Shorter
-	/// than it once was: the camera restarts itself after a wake now, so a device that
-	/// is genuinely not ready gets a second chance without costing every unlock 700 ms.
-	internal static let wakeSettle = Duration.milliseconds(450)
+	internal static let wakeSettle = LockWakePolicy.wakeSettle
 
-	/// Shorter settle after opening the lid. The full settle above exists so the key
-	/// press or Escape that woke the Mac is taken before the input snapshot; opening
-	/// the lid involves no key press, so there is nothing to let pass.
-	private static let lidOpenSettle = Duration.milliseconds(150)
-
-	/// Whether the lid is currently open. Desktops report no clamshell state and read
-	/// false here, so they always keep the full settle.
-	private static func lidOpenedRecently() -> Bool {
+	/// Whether the MacBook lid is currently closed. Desktops report no clamshell state
+	/// and read false here, so they always keep the full wake settle.
+	internal static func isClamshellClosed() -> Bool {
 		let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
 		guard service != IO_OBJECT_NULL else { return false }
 		defer { IOObjectRelease(service) }
 		guard let state = IORegistryEntryCreateCFProperty(service, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? Bool else { return false }
-		return !state
+		return state
 	}
 
 	package init(store: FaceEnrollmentStore, lockout: LockoutManager) {
@@ -173,17 +175,34 @@ package final class LockWatcher {
 		// displays, and which arrives first depends on how the Mac was woken — a lid, a
 		// key press, or a Bluetooth mouse are not the same sequence.
 		let workspace = NSWorkspace.shared.notificationCenter
-		for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
-			observers.append(
-				workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-					MainActor.assumeIsolated { self?.wokeUp() }
-				})
-		}
-
+		observers.append(
+			workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+				MainActor.assumeIsolated { self?.wokeUp(source: "didWake") }
+			})
+		observers.append(
+			workspace.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+				MainActor.assumeIsolated { self?.wokeUp(source: "screensDidWake") }
+			})
+		observers.append(
+			workspace.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+				MainActor.assumeIsolated { self?.wokeUp(source: "sessionActive") }
+			})
+		observers.append(
+			workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+				MainActor.assumeIsolated { self?.systemWillSleep() }
+			})
 		observers.append(
 			workspace.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) {
 				[weak self] _ in
 				MainActor.assumeIsolated { self?.displaysSlept() }
+			})
+		// External monitors often finish waking and reconfiguring seconds after `didWake`
+		// / `screensDidWake`. Re-check wake state when screen topology changes.
+		observers.append(
+			NotificationCenter.default.addObserver(
+				forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+			) { [weak self] _ in
+				MainActor.assumeIsolated { self?.screenParametersChanged() }
 			})
 
 		// The screen saver covers everything, so a lock reported while it runs must
@@ -200,6 +219,17 @@ package final class LockWatcher {
 			) { [weak self] _ in
 				MainActor.assumeIsolated { self?.screenSaverStopped() }
 			})
+
+		// If Gaze starts (or restarts its watcher) while already locked, synchronize state
+		// so Space/pointer retry and the unlock watchdog are live.
+		if Self.screenIsLocked() {
+			isLocked = true
+			spaceMonitor.start()
+			if !Self.displaysAreAsleep() {
+				startUnlockWatchdog()
+				watchPointerForRetry()
+			}
+		}
 
 		Self.logger.notice("Watching for screen lock and wake.")
 	}
@@ -218,23 +248,51 @@ package final class LockWatcher {
 		unlockWatchdog = nil
 		pointerRetry?.cancel()
 		pointerRetry = nil
+		wakeProbe?.cancel()
+		wakeProbe = nil
+		unlockRetryTask?.cancel()
+		unlockRetryTask = nil
+		submissionCheckTask?.cancel()
+		submissionCheckTask = nil
 		capsule.hide()
 		LockScreenLight.shared.hide()
 		isWatching = false
+		isLocked = false
 		lastWakeTrigger = nil
+		lastSleepAt = nil
+		clamshellClosedAtSleep = false
 		screenSaverRunning = false
+		screenSaverStartedAt = nil
 		spaceMonitor.stop()
 		for token in observers {
 			DistributedNotificationCenter.default().removeObserver(token)
 			NSWorkspace.shared.notificationCenter.removeObserver(token)
+			NotificationCenter.default.removeObserver(token)
 		}
 		observers.removeAll()
 	}
 
 	// MARK: - Events
 
+	internal func reconcileScreenSaverState(now: ContinuousClock.Instant = .now) {
+		let running = LockWakePolicy.reconciledScreenSaverRunning(
+			cachedRunning: screenSaverRunning,
+			processRunning: Self.screenSaverIsRunning(),
+			startedAt: screenSaverStartedAt,
+			now: now)
+		if screenSaverRunning && !running {
+			Self.logger.notice("Cleared stale screen-saver state on wake/lock.")
+			screenSaverStartedAt = nil
+		}
+		screenSaverRunning = running
+	}
+
 	private func screenLocked() {
 		guard Self.screenIsLocked() else { return }
+		unlockRetryTask?.cancel()
+		unlockRetryTask = nil
+		wakeProbe?.cancel()
+		wakeProbe = nil
 		// Warm the models now, while the camera is still off, so the first scan does
 		// not stall loading them mid-loop. Off the main actor, in parallel with the
 		// attempt below; warmUp reloads them if they were unloaded while idle.
@@ -245,18 +303,21 @@ package final class LockWatcher {
 		}
 		isLocked = true
 		explainedStandDown = false
+		if submissionID == nil && !didSubmitPassword {
+			Self.manualInputObserved = false
+		}
 		spaceMonitor.start()
 		closedAttemptLogged = false
 		lastFacePixelBuffer = nil
+		reconcileScreenSaverState()
 		// The screen saver covers the panel, so a lock reported while it runs is
 		// not a moment anyone can see or answer. Dismissing it starts the scan.
 		guard !screenSaverRunning else {
 			Self.logger.notice("Screen locked with the screen saver running; not scanning until it's dismissed.")
 			return
 		}
-		// An idle Mac usually locks as its display turns off. Scanning then found the
-		// person sitting there and asked for a movement on a black screen, which timed out
-		// and counted as a miss again and again. The display waking starts the scan instead.
+		// An idle Mac or Apple → Sleep locks as its display turns off. Scanning then
+		// found a black screen and suspended camera. The display waking starts the scan.
 		guard !Self.displaysAreAsleep() else {
 			Self.logger.notice("Screen locked with the display off; waiting for it to wake.")
 			return
@@ -264,20 +325,42 @@ package final class LockWatcher {
 		beginAttempt(trigger: "Screen locked")
 	}
 
+	/// The system is entering Sleep (`Apple → Sleep`, lid close, or idle sleep).
+	private func systemWillSleep() {
+		tearDownForSleep(reason: "System entering sleep", endReason: "system-slept")
+	}
+
 	/// The display went dark mid-scan. Nobody can see the panel or answer it, so stop
 	/// without counting anything; waking the display starts again.
 	private func displaysSlept() {
+		tearDownForSleep(reason: "Display turned off", endReason: "display-slept")
+	}
+
+	private func tearDownForSleep(reason: String, endReason: String) {
+		lastSleepAt = .now
+		if Self.isClamshellClosed() {
+			clamshellClosedAtSleep = true
+		}
 		lastWakeTrigger = nil
-		// Nobody can see it, and the brightness it boosted should come back down.
-		LockScreenLight.shared.hide()
+		// Display/system sleep ends any prior typing or click stand-down so the next
+		// wake gets a fresh scan. The one-shot submission budget is never reset here.
+		Self.manualInputObserved = false
+		wakeProbe?.cancel()
+		wakeProbe = nil
+		unlockWatchdog?.cancel()
+		unlockWatchdog = nil
 		pointerRetry?.cancel()
 		pointerRetry = nil
+		submissionCheckTask?.cancel()
+		submissionCheckTask = nil
+		// Nobody can see it, and the brightness it boosted should come back down.
+		LockScreenLight.shared.hide()
 		guard attempt != nil else { return }
 		submissionID = nil
 		didSubmitPassword = false
-		Self.logger.notice("Display turned off during a scan; stopping until it wakes.")
-		logAttemptTiming(outcome: "display-slept")
-		recordEndedWithoutGaze(.leftLocked, endReason: "display-slept")
+		Self.logger.notice("\(reason, privacy: .public) during a scan; stopping until it wakes.")
+		logAttemptTiming(outcome: endReason)
+		recordEndedWithoutGaze(.leftLocked, endReason: endReason)
 		attempt?.cancel()
 		attempt = nil
 		attemptID = nil
@@ -288,6 +371,7 @@ package final class LockWatcher {
 	/// going dark: nobody can see the panel, so there is nothing to answer.
 	private func screenSaverStarted() {
 		screenSaverRunning = true
+		screenSaverStartedAt = .now
 		LockScreenLight.shared.hide()
 		pointerRetry?.cancel()
 		pointerRetry = nil
@@ -307,6 +391,7 @@ package final class LockWatcher {
 	/// required now; otherwise the camera stays off.
 	private func screenSaverStopped() {
 		screenSaverRunning = false
+		screenSaverStartedAt = nil
 		guard Self.screenIsLocked() else { return }
 		guard !Self.displaysAreAsleep() else { return }
 		isLocked = true
@@ -324,67 +409,144 @@ package final class LockWatcher {
 		return true
 	}
 
+	/// True only when *all* online displays are asleep (or no display is online).
+	///
+	/// On dual-display Macs where an external monitor is the main display, that monitor
+	/// often reports asleep for seconds after wake while the built-in display is already
+	/// awake and showing the lock screen. Checking every online display avoids dropping
+	/// those wakes.
 	internal static func displaysAreAsleep() -> Bool {
-		CGDisplayIsAsleep(CGMainDisplayID()) != 0
+		var count: UInt32 = 0
+		guard CGGetOnlineDisplayList(0, nil, &count) == .success else {
+			return CGDisplayIsAsleep(CGMainDisplayID()) != 0
+		}
+		guard count > 0 else { return true }
+		var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+		guard CGGetOnlineDisplayList(count, &displays, &count) == .success else {
+			return CGDisplayIsAsleep(CGMainDisplayID()) != 0
+		}
+		let states = displays.prefix(Int(count)).map { CGDisplayIsAsleep($0) != 0 }
+		return LockWakePolicy.allDisplaysAsleep(displaySleepStates: states)
+	}
+
+	/// Display configuration changed (e.g. an external display finished waking or
+	/// reconnecting after Sleep). If locked and idle with no scan yet since sleep,
+	/// trigger the wake path.
+	private func screenParametersChanged() {
+		guard Self.screenIsLocked(), !Self.displaysAreAsleep() else { return }
+		guard attempt == nil, submissionID == nil, !Self.manualInputObserved else { return }
+		guard wakeProbe != nil || lastWakeTrigger == nil else { return }
+		wokeUp(source: "screenParameters")
+	}
+
+	/// Probes briefly after a wake notification when displays are still turning on or
+	/// `CGSSessionScreenIsLocked` has not finished updating yet. Bounded to ~3.25 s and
+	/// cancelled immediately on sleep, unlock, or scan start.
+	private func scheduleWakeProbe() {
+		guard wakeProbe == nil else { return }
+		wakeProbe = Task { [weak self] in
+			for delay in LockWakePolicy.wakeProbeIntervals {
+				do { try await Task.sleep(for: delay) }
+				catch { return }
+				guard let self, !Task.isCancelled, self.isWatching else { return }
+				if Self.screenIsLocked() && !Self.displaysAreAsleep() {
+					self.wakeProbe = nil
+					self.wokeUp(source: "wake-probe")
+					return
+				}
+			}
+			guard let self, !Task.isCancelled else { return }
+			self.wakeProbe = nil
+		}
 	}
 
 	/// The Mac woke up. If it woke to a locked screen, look for a face.
 	///
 	/// This is the common case the app used to miss entirely. `com.apple.screenIsLocked`
-	/// fires when the screen *becomes* locked — which, for a Mac that was closed and
-	/// carried somewhere, happened before it went to sleep. Waking it posts no such
-	/// notification, because nothing changed: it was locked then and it is locked now. So
-	/// the most ordinary way anyone meets their lock screen — open the lid — was the one
-	/// way Gaze never ran.
-	private func wokeUp() {
-		// The notification says the machine woke, not that the screen is locked. Ask the
-		// window server rather than assuming, for the same reason the replay path does:
-		// the failure to avoid is typing a password at a screen that is already open.
-		guard Self.screenIsLocked() else { return }
-		// The machine can wake before its display does; the display's own wake follows.
-		guard !Self.displaysAreAsleep() else { return }
-
-		// Waking posts more than one notification — the system wakes, then the displays
-		// do — and both mean the same thing here. Without this, the second one cancels
-		// the attempt the first one started and the camera is torn down and rebuilt.
-		if let last = lastWakeTrigger, Date().timeIntervalSince(last) < Self.wakeDebounce {
+	/// fires when the screen *becomes* locked — which, for a Mac put to Sleep or closed,
+	/// happened before it went to sleep. Waking it posts no such notification, because
+	/// nothing changed: it was locked then and it is locked now.
+	private func wokeUp(source: String = "wake") {
+		LockScreenLight.shared.restoreStrandedBrightnessIfNeeded()
+		let locked = Self.screenIsLocked()
+		let asleep = Self.displaysAreAsleep()
+		guard locked && !asleep else {
+			let recentlySlept = lastSleepAt.map { $0.duration(to: .now) < .seconds(30) } ?? false
+			if source != "wake-probe", asleep || isLocked || recentlySlept {
+				Self.logger.notice("Wake (\(source, privacy: .public)) deferred: locked=\(locked) displaysAsleep=\(asleep); probing briefly.")
+				scheduleWakeProbe()
+			}
 			return
 		}
-		lastWakeTrigger = Date()
+		wakeProbe?.cancel()
+		wakeProbe = nil
 
 		isLocked = true
 		spaceMonitor.start()
+		startUnlockWatchdog()
+		reconcileScreenSaverState()
 		// The wake arrived while the screen saver still covers everything.
 		guard !screenSaverRunning else {
 			Self.logger.notice("Woke with the screen saver running; not scanning until it's dismissed.")
 			return
 		}
-		// Opening the lid involves no key press, so when the lid is open and nothing
-		// was typed or clicked to wake the Mac, the shorter settle is enough before
-		// the input snapshot is taken.
-		let settle: Duration
-		if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) > 1.0,
-			CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .leftMouseDown) > 1.0 {
-			settle = Self.lidOpenSettle
-			Self.logger.notice("Woke with the lid open and no recent input; using the shorter settle.")
-		} else {
-			settle = Self.wakeSettle
-			Self.logger.notice("Woke via key or mouse; using the full settle.")
+
+		// Waking posts more than one notification — the system wakes, then the displays
+		// do — and both mean the same thing here. Suppress duplicates while an attempt
+		// is running or just succeeded, but never drop `didWake` if an earlier
+		// `screensDidWake` attempt already failed on a suspended camera.
+		if LockWakePolicy.shouldDebounceWake(
+			lastWakeAt: lastWakeTrigger,
+			now: .now,
+			attemptActive: attempt != nil,
+			lastAttemptFailedCamera: cameraFailed
+		) {
+			return
 		}
-		beginAttempt(trigger: "Woke to a locked screen", settle: settle)
+		lastWakeTrigger = .now
+
+		// Only a genuine closed→open lid transition with no HID wake input uses the
+		// shorter settle. Apple → Sleep with the lid open, desktop wakes, and keyboard/
+		// mouse wakes keep the full settle (running in parallel with camera startup) so
+		// wake clicks and key releases are never misread as password entry.
+		let settleDecision = LockWakePolicy.settleDuration(
+			clamshellWasClosed: clamshellClosedAtSleep,
+			clamshellIsClosed: Self.isClamshellClosed(),
+			secondsSinceKeyDown: CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown),
+			secondsSinceLeftClick: CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .leftMouseDown),
+			secondsSinceRightClick: CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .rightMouseDown),
+			secondsSinceMouseMove: CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .mouseMoved)
+		)
+		clamshellClosedAtSleep = false
+		if settleDecision.isLidOpen {
+			Self.logger.notice("Woke (\(source, privacy: .public)) by opening the lid with no recent input; using the shorter settle.")
+		} else {
+			Self.logger.notice("Woke (\(source, privacy: .public)) from sleep or input; using the full settle.")
+		}
+		beginAttempt(trigger: "Woke to a locked screen", settle: settleDecision.duration)
 	}
 
 	internal func screenUnlocked(retry: Int = 0) {
+		unlockRetryTask?.cancel()
+		unlockRetryTask = nil
 		guard AutofillConsoleSession.current() != nil else {
 			// The notification can arrive while the session still reports locked. Returning
 			// here left the panel on the desktop and the camera running, so check again.
 			if retry < 8 {
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-					MainActor.assumeIsolated { self?.screenUnlocked(retry: retry + 1) }
+				unlockRetryTask = Task { [weak self] in
+					do { try await Task.sleep(for: .milliseconds(250)) }
+					catch { return }
+					guard let self, !Task.isCancelled, self.isWatching else { return }
+					self.screenUnlocked(retry: retry + 1)
 				}
 			} else if !Self.screenIsLocked() {
 				Self.logger.notice("Unlocked into a session Gaze cannot verify; hiding the panel.")
 				isLocked = false
+				screenSaverRunning = false
+				screenSaverStartedAt = nil
+				clamshellClosedAtSleep = false
+				lastSleepAt = nil
+				Self.manualInputObserved = false
 				spaceMonitor.stop()
 				submissionID = nil
 				didSubmitPassword = false
@@ -396,6 +558,13 @@ package final class LockWatcher {
 				attemptID = nil
 				unlockWatchdog?.cancel()
 				unlockWatchdog = nil
+				pointerRetry?.cancel()
+				pointerRetry = nil
+				wakeProbe?.cancel()
+				wakeProbe = nil
+				submissionCheckTask?.cancel()
+				submissionCheckTask = nil
+				LockScreenLight.shared.hide()
 				capsule.hide()
 			}
 			return
@@ -404,6 +573,11 @@ package final class LockWatcher {
 		unlockWatchdog = nil
 		pointerRetry?.cancel()
 		pointerRetry = nil
+		wakeProbe?.cancel()
+		wakeProbe = nil
+		submissionCheckTask?.cancel()
+		submissionCheckTask = nil
+		LockScreenLight.shared.hide()
 		if let diagnosticID {
 			if didSubmitPassword { LockScanDiagnostics.shared.record(.unlocked, for: diagnosticID) }
 			else { LockScanDiagnostics.shared.finishScanning(for: diagnosticID) }
@@ -412,6 +586,10 @@ package final class LockWatcher {
 		Self.manualInputObserved = false
 		submissionID = nil
 		isLocked = false
+		screenSaverRunning = false
+		screenSaverStartedAt = nil
+		clamshellClosedAtSleep = false
+		lastSleepAt = nil
 		spaceMonitor.stop()
 		// Whatever unlocked the Mac, we are done. Cancelling releases the camera promptly
 		// rather than leaving the indicator lit after the user has typed their password.

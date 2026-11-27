@@ -197,4 +197,58 @@ struct RecognitionTests {
 		CVPixelBufferUnlockBaseAddress(crop, .readOnly)
 		#expect(FaceAligner.contextCrop(wideBoxSample, side: 80, margin: .nan) == nil)
 	}
+
+	@Test func settlingExposureFailsClosedWithoutLockingOutOnColdCameraFrames() async throws {
+		let candidate = printAt(1)
+		let embedder = MutableStubEmbedder(print: candidate)
+		let buffer = try makeBuffer()
+		let sample = try makeSample(pixelBuffer: buffer)
+		let face = FaceEnrollment(
+			name: "Owner",
+			prints: [candidate, printAt(0.8)],
+			embedder: embedder.identifier,
+			cameraID: "cam"
+		)
+
+		let spoofScore = Mutex<Float>(0.99)
+		let gate = AntiSpoofGate(confidence: { _, _ in spoofScore.withLock { $0 } })
+		let evaluator = UnlockFrameEvaluator(embedder: embedder, faces: [face], antiSpoof: gate)
+
+		// Cold-camera exposure settle: spoof spikes fail closed as `.suspect` (never permitting match hold)
+		// without accumulating into a lockout-triggering `.spoof` rejection.
+		for _ in 0..<(UnlockFrameEvaluator.classifierFireFrames + 2) {
+			let result = await evaluator.evaluate(sample, settlingExposure: true)
+			#expect(result.matched)
+			#expect(!result.permitsMatchHold(requiresAntiSpoof: true))
+			#expect(!result.permitsMatchHold(requiresAntiSpoof: false))
+			guard case .suspect = result.spoofDecision else {
+				Issue.record("Expected .suspect during exposure settle, got \(String(describing: result.spoofDecision))")
+				return
+			}
+		}
+
+		// Once exposure has settled, the classifier starts from a clean count and still fires at classifierFireFrames.
+		for index in 1...UnlockFrameEvaluator.classifierFireFrames {
+			let result = await evaluator.evaluate(sample, settlingExposure: false)
+			#expect(!result.permitsMatchHold(requiresAntiSpoof: true))
+			if index < UnlockFrameEvaluator.classifierFireFrames {
+				guard case .suspect = result.spoofDecision else {
+					Issue.record("Expected .suspect before classifierFireFrames, got \(String(describing: result.spoofDecision))")
+					return
+				}
+			} else {
+				guard case .spoof = result.spoofDecision else {
+					Issue.record("Expected .spoof at classifierFireFrames, got \(String(describing: result.spoofDecision))")
+					return
+				}
+			}
+		}
+
+		// Genuine live frames during exposure settle still pass immediately without delay.
+		await evaluator.resetSpoofCues()
+		spoofScore.withLock { $0 = 0.05 }
+		let liveDuringSettle = await evaluator.evaluate(sample, settlingExposure: true)
+		#expect(liveDuringSettle.spoofDecision == .live)
+		#expect(liveDuringSettle.permitsMatchHold(requiresAntiSpoof: true))
+	}
 }
