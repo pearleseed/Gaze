@@ -7,16 +7,16 @@
 # launch. The postflight clears the quarantine flag on install and on every
 # upgrade, matching the manual `xattr` step in the README.
 cask "gaze" do
-  version "0.1.12"
+  version "0.1.13"
 
   on_arm do
     sha256 :no_check
-    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-13-arm64.dmg"
+    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-14-arm64.dmg"
   end
 
   on_intel do
     sha256 :no_check
-    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-13-x86_64.dmg"
+    url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-14-x86_64.dmg"
   end
 
   name "Gaze"
