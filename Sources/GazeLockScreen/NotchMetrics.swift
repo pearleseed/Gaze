@@ -42,6 +42,33 @@ package enum NotchMetrics {
 		width(on: screen) != nil
 	}
 
+	/// Where moving the pointer asks Gaze to look again on a locked screen: a band across
+	/// the top centre of the display, a little wider and taller than the panel's housing
+	/// so it can be hit without aiming. Screens without a notch get the same band, at the
+	/// top centre where the panel appears.
+	package static func hoverZone(screenFrame: CGRect, cutoutWidth: CGFloat?, notchHeight: CGFloat) -> CGRect {
+		let width = max((cutoutWidth ?? 180) * 1.56, 240) + 40
+		let height = max(notchHeight, 24) + 16
+		return CGRect(x: screenFrame.midX - width / 2, y: screenFrame.maxY - height, width: width, height: height)
+	}
+
+	package static func hoverZone(on screen: NSScreen) -> CGRect {
+		hoverZone(screenFrame: screen.frame, cutoutWidth: width(on: screen), notchHeight: height(on: screen))
+	}
+
+	/// Inclusive on every edge: a pointer pushed against the top of the display reports
+	/// exactly the screen's `maxY`, which `CGRect.contains` would leave out.
+	package static func zone(_ zone: CGRect, includes point: CGPoint) -> Bool {
+		point.x >= zone.minX && point.x <= zone.maxX && point.y >= zone.minY && point.y <= zone.maxY
+	}
+
+	/// Whether the pointer is over the notch area of any display right now.
+	@MainActor
+	package static func pointerIsInHoverZone() -> Bool {
+		let point = NSEvent.mouseLocation
+		return NSScreen.screens.contains { zone(hoverZone(on: $0), includes: point) }
+	}
+
 	/// The rectangle the notch itself occupies, in screen coordinates.
 	package static func frame(on screen: NSScreen) -> NSRect? {
 		guard let width = width(on: screen) else { return nil }

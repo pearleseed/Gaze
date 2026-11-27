@@ -7,6 +7,27 @@ import Testing
 @Suite("Notch Panel Alignment, Companion Motion & Seam Geometry")
 @MainActor
 struct NotchLogicTests {
+	@Test func hoverZoneCoversTheNotchAndItsTopEdge() {
+		let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+		let zone = NotchMetrics.hoverZone(screenFrame: screen, cutoutWidth: 185, notchHeight: 38)
+		#expect(zone.maxY == screen.maxY)
+		#expect(abs(zone.midX - screen.midX) < 0.001)
+		#expect(zone.width >= 185 * 1.56)
+		#expect(zone.height > 38)
+		// The pointer pressed against the top edge, right under the camera.
+		#expect(NotchMetrics.zone(zone, includes: CGPoint(x: screen.midX, y: screen.maxY)))
+		#expect(NotchMetrics.zone(zone, includes: CGPoint(x: screen.midX + 140, y: screen.maxY - 30)))
+		#expect(!NotchMetrics.zone(zone, includes: CGPoint(x: 40, y: screen.maxY)))
+		#expect(!NotchMetrics.zone(zone, includes: CGPoint(x: screen.midX, y: screen.midY)))
+
+		// No notch: the same band still sits at the top centre, on any screen origin.
+		let external = CGRect(x: -1920, y: 200, width: 1920, height: 1080)
+		let plain = NotchMetrics.hoverZone(screenFrame: external, cutoutWidth: nil, notchHeight: 0)
+		#expect(plain.maxY == external.maxY)
+		#expect(abs(plain.midX - external.midX) < 0.001)
+		#expect(plain.height >= 24)
+	}
+
 	@Test func panelAlignmentOutwardPixelRounding() {
 		let screen = CGRect(x: 0, y: 0, width: 1470, height: 956)
 		let actual = NotchMetrics.panelFrame(

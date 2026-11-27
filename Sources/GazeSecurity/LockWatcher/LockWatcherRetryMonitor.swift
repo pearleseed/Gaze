@@ -37,6 +37,11 @@ extension LockWatcher {
 			keystrokeSelected: Preferences.shared.unlockBackend == .keystroke) else { return }
 		guard submissionID == nil, Self.submissionBudget.maySubmit, !Self.manualInputObserved else {
 			Self.logger.notice("\(trigger, privacy: .public) ignored: submitting=\(self.submissionID != nil) budget=\(Self.submissionBudget.maySubmit) typed=\(Self.manualInputObserved)")
+			// Stood down only because of typing or a click: keep the notch live, so
+			// moving the pointer into it can still ask for another look.
+			if submissionID == nil, Self.submissionBudget.maySubmit, isLocked, attempt == nil {
+				watchPointerForRetry()
+			}
 			return
 		}
 		guard attempt == nil else { return }
@@ -200,20 +205,38 @@ extension LockWatcher {
 		beginAttempt(trigger: "Space pressed on a locked screen")
 	}
 
-	/// Moving the mouse or trackpad after a scan has ended starts a new one. Clicks and
-	/// key presses still stop Gaze for this lock (see `LockScreenInputGuard`).
+	/// Moving the mouse or trackpad after a scan has ended starts a new one.
+	///
+	/// Clicks and key presses still stop Gaze for this lock (see `LockScreenInputGuard`),
+	/// and after them plain movement no longer counts. Moving the pointer *into* the notch
+	/// does: like Space, it is a deliberate "look again", so it lifts that stand-down. That
+	/// is the way back when the panel went away before you were in front of the camera.
+	/// Only an entry counts, so a pointer left parked at the notch does not loop scans.
 	internal func watchPointerForRetry() {
 		pointerRetry?.cancel()
 		let moves = CGEventSource.counterForEventType(.hidSystemState, eventType: .mouseMoved)
+		let startedInNotch = NotchMetrics.pointerIsInHoverZone()
 		pointerRetry = Task { [weak self] in
+			var wasInNotch = startedInNotch
 			while !Task.isCancelled {
-				try? await Task.sleep(for: .milliseconds(500))
-				guard let self, !Task.isCancelled, self.isLocked, !Self.manualInputObserved else { return }
-				guard !Self.displaysAreAsleep(), self.attempt == nil,
-					CGEventSource.counterForEventType(.hidSystemState, eventType: .mouseMoved) != moves
-				else { continue }
+				try? await Task.sleep(for: .milliseconds(250))
+				guard let self, !Task.isCancelled, self.isLocked else { return }
+				let inNotch = NotchMetrics.pointerIsInHoverZone()
+				let enteredNotch = inNotch && !wasInNotch
+				wasInNotch = inNotch
+				guard !Self.displaysAreAsleep(), !self.screenSaverRunning, self.attempt == nil else { continue }
+				if Self.manualInputObserved {
+					guard enteredNotch else { continue }
+					Self.manualInputObserved = false
+					Self.logger.notice("Pointer entered the notch after manual input; looking again.")
+				} else {
+					guard enteredNotch
+						|| CGEventSource.counterForEventType(.hidSystemState, eventType: .mouseMoved) != moves
+					else { continue }
+				}
 				self.pointerRetry = nil
-				self.beginAttempt(trigger: "Pointer moved on a locked screen")
+				self.beginAttempt(trigger: enteredNotch
+					? "Pointer entered the notch on a locked screen" : "Pointer moved on a locked screen")
 				return
 			}
 		}

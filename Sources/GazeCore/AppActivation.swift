@@ -25,25 +25,50 @@ package enum AppActivation {
 		guard userInitiated || !isBackgroundLaunch else { return }
 		NSApp.setActivationPolicy(.regular)
 		NSApp.activate()
-		// `activate()` alone can lose the race against a window that is still being
-		// created, so order it up explicitly once it exists.
-		//
-		// Only windows already on screen, and only the key-capable ones.
-		//
-		// SwiftUI does not destroy a `Window` scene when it is dismissed — it orders it out
-		// and keeps it — so `NSApp.windows` holds every window the app has ever shown.
-		// Raising all of them meant opening any one window dragged every previously-closed
-		// window back up with it: open Settings and the setup flow you finished last week
-		// reappears on top of it.
-		//
-		// This filter was removed once already, on the theory that the loop is what presents
-		// a freshly-created window and so must not skip invisible ones. That was wrong twice
-		// over: SwiftUI's `openWindow` and `.defaultLaunchBehavior(.presented)` do the
-		// presenting, this loop only wins a race against them; and the evidence for the
-		// theory was a test harness that had stopped activating the app before listing
-		// windows, so it reported every window as missing whatever the code did.
-		for window in NSApp.windows where window.canBecomeKey && window.isVisible {
-			window.orderFrontRegardless()
+		raiseVisibleWindows()
+		// Callers invoke this *before* `openWindow`, so the window being asked for does not
+		// exist yet and the pass above cannot raise it. Nothing raised it afterwards either:
+		// Settings opened from the menu bar appeared behind whatever app was in front.
+		// Activation right after an activation-policy change is also unreliable for an app
+		// that was an accessory a moment ago. So the window is raised again once it has had
+		// time to appear, and activation is forced if the first attempt lost.
+		let generation = raiseGeneration &+ 1
+		raiseGeneration = generation
+		for delay in [0.05, 0.15, 0.4] {
+			DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+				MainActor.assumeIsolated {
+					// A newer request supersedes this one, and the user may have closed
+					// the window or moved on meanwhile.
+					guard raiseGeneration == generation else { return }
+					if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
+					raiseVisibleWindows()
+				}
+			}
+		}
+	}
+
+	private static var raiseGeneration = 0
+
+	/// Only windows already on screen, and only the key-capable ones.
+	///
+	/// SwiftUI does not destroy a `Window` scene when it is dismissed — it orders it out
+	/// and keeps it — so `NSApp.windows` holds every window the app has ever shown.
+	/// Raising all of them meant opening any one window dragged every previously-closed
+	/// window back up with it: open Settings and the setup flow you finished last week
+	/// reappears on top of it.
+	///
+	/// This filter was removed once already, on the theory that the loop is what presents
+	/// a freshly-created window and so must not skip invisible ones. That was wrong twice
+	/// over: SwiftUI's `openWindow` and `.defaultLaunchBehavior(.presented)` do the
+	/// presenting, this loop only wins a race against them; and the evidence for the
+	/// theory was a test harness that had stopped activating the app before listing
+	/// windows, so it reported every window as missing whatever the code did.
+	private static func raiseVisibleWindows() {
+		let windows = NSApp.windows.filter { $0.canBecomeKey && $0.isVisible }
+		for window in windows { window.orderFrontRegardless() }
+		// Key goes to the one that was most recently in front, not to whichever is last.
+		if let front = windows.min(by: { $0.orderedIndex < $1.orderedIndex }), !front.isKeyWindow {
+			front.makeKey()
 		}
 	}
 
