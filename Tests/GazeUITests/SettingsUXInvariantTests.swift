@@ -40,6 +40,21 @@ struct SettingsUXInvariantTests {
 		#expect(!settings.contains("if controlsVisible {"))
 	}
 
+	@Test func enrolledFaceAvatarPickerPopoverAndNativePresets() throws {
+		let settings = try Self.settingsSources()
+		#expect(settings.contains(".popover(isPresented: $showingAvatarPicker"))
+		#expect(settings.contains("FaceAvatarPicker("))
+		#expect(settings.contains("FaceAvatarView("))
+		#expect(settings.contains("NSApp.orderFrontCharacterPalette(nil)"))
+		#expect(settings.contains("pendingCharacterPalette"))
+		#expect(settings.contains("Button(\"Use Monogram\")"))
+		#expect(settings.contains(".onChange(of: currentAvatar.preset)"))
+		#expect(!settings.contains("monogramDraft = capped"))
+		#expect(settings.contains("Choose Photo…"))
+		#expect(settings.contains("store.avatar(for: face.id)"))
+		#expect(settings.contains("store.setAvatarPreset($0, for: face.id)"))
+	}
+
 	@Test func touchIDScopeAndDeliberatelyUnchangedControls() throws {
 		let settings = try Self.settingsSources()
 		#expect(settings.contains("Ask before removing a face or changing the stored password"))

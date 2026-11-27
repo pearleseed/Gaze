@@ -211,7 +211,7 @@ struct SettingsSearchItem: Identifiable, Hashable, Sendable {
 			id: "faces",
 			title: "Enrolled faces",
 			subtitle: "Add, rename or remove the faces that unlock this Mac",
-			keywords: ["face", "faces", "enroll", "enrol", "enrollment", "enrolment", "add", "remove", "rename", "portrait"],
+			keywords: ["face", "faces", "enroll", "enrol", "enrollment", "enrolment", "add", "remove", "rename", "portrait", "avatar", "emoji", "monogram"],
 			pane: "face",
 			section: "hero"
 		),

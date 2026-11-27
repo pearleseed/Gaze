@@ -13,17 +13,20 @@ import GazeRecognition
 struct FaceTile: View {
 
 	let face: FaceEnrollment
-	/// The picture somebody chose for this person, if they chose one.
-	var portrait: NSImage?
+	/// The avatar somebody chose for this person — a custom photo, a native Emoji/Monogram
+	/// preset, or `.initials` for Gaze's neutral fallback.
+	var avatar: FaceAvatar
 	/// Whether this face can unlock. Reads through to the store so the switch
 	/// settles back when enabling is cancelled at the confirmation prompt.
 	var isEnabled: Binding<Bool>
 	var rename: (String) -> Void
 	var setPortrait: (NSImage?) -> Void
+	var setAvatarPreset: (FaceAvatarPreset?) -> Void
 	var remove: () -> Void
 
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@State private var hovering = false
+	@State private var showingAvatarPicker = false
 	/// Keep actions in the focus/accessibility tree even before the pointer arrives.
 	@FocusState private var portraitFocused: Bool
 	@FocusState private var removeFocused: Bool
@@ -37,17 +40,19 @@ struct FaceTile: View {
 
 	init(
 		face: FaceEnrollment,
-		portrait: NSImage?,
+		avatar: FaceAvatar,
 		isEnabled: Binding<Bool>,
 		rename: @escaping (String) -> Void,
 		setPortrait: @escaping (NSImage?) -> Void,
+		setAvatarPreset: @escaping (FaceAvatarPreset?) -> Void,
 		remove: @escaping () -> Void
 	) {
 		self.face = face
-		self.portrait = portrait
+		self.avatar = avatar
 		self.isEnabled = isEnabled
 		self.rename = rename
 		self.setPortrait = setPortrait
+		self.setAvatarPreset = setAvatarPreset
 		self.remove = remove
 		_draft = State(initialValue: face.name)
 	}
@@ -74,36 +79,18 @@ struct FaceTile: View {
 				// that merely carries somebody's name is not a recognition event, and
 				// spending the colour here is the same dilution the sidebar tint note warns
 				// about. The tile is neutral; the green stays where it means something.
-				// A portrait when there is one, initials when there is not.
-				//
-				// Initials are macOS's own fallback for a person with no picture, and they
-				// were the whole improvement over four identical glyphs. A real face is
-				// better still: on a Mac with several people enrolled it is the fastest
-				// possible way to tell one row from another, and it is the thing every other
-				// list of people on this system shows.
-				Circle()
-					.fill(Theme.surface)
-					.frame(width: 52, height: 52)
-					.overlay {
-						if let portrait {
-							Image(nsImage: portrait)
-								.resizable()
-								.interpolation(.high)
-								.aspectRatio(contentMode: .fill)
-								.clipShape(.circle)
-						} else {
-							Text(initials)
-								.font(.system(size: 21, weight: .medium, design: .rounded))
-								.foregroundStyle(Theme.secondaryLabel)
-						}
-					}
-					.overlay { Circle().strokeBorder(Theme.separator, lineWidth: 1) }
+				// A photo or native Emoji/Monogram preset when chosen; initials when not.
+				FaceAvatarView(avatar: avatar, faceName: face.name, size: 52)
+					.contentShape(.circle)
+					.onTapGesture { showingAvatarPicker = true }
 
 			// A camera badge on hover or keyboard focus, because a context menu nobody
 			// right-clicks is a feature nobody finds. Bottom-leading so it cannot
 			// collide with the remove button in the opposite corner.
 			Group {
-				Button(action: choosePortrait) {
+				Button {
+					showingAvatarPicker = true
+				} label: {
 					Image(systemName: "camera.fill")
 						.font(.system(size: 10, weight: .semibold))
 						.foregroundStyle(.white)
@@ -111,7 +98,7 @@ struct FaceTile: View {
 						.background(Circle().fill(.black.opacity(0.55)))
 				}
 				.buttonStyle(.plain)
-				.help("Choose a photo for \(face.name)")
+				.help("Choose an avatar or photo for \(face.name)")
 				.accessibilityLabel("Choose a photo for \(face.name)")
 				.focused($portraitFocused)
 				.opacity(controlsVisible ? 1 : 0)
@@ -141,6 +128,23 @@ struct FaceTile: View {
 				.offset(x: 7, y: -7)
 				.transition(reduceMotion ? .identity : .opacity)
 			}
+		}
+		.popover(isPresented: $showingAvatarPicker, arrowEdge: .bottom) {
+			FaceAvatarPicker(
+				faceName: face.name,
+				currentAvatar: avatar,
+				onSelectPreset: { setAvatarPreset($0) },
+				onChoosePhoto: {
+					showingAvatarPicker = false
+					Task { @MainActor in
+						choosePortrait()
+					}
+				},
+				onReset: {
+					setAvatarPreset(nil)
+					showingAvatarPicker = false
+				}
+			)
 		}
 		.animation(
 			reduceMotion || portraitFocused || removeFocused || isEditing
@@ -187,16 +191,19 @@ struct FaceTile: View {
 		}
 		.contentShape(Rectangle())
 		.contextMenu {
+			Button("Choose Avatar…") { showingAvatarPicker = true }
 			Button("Choose Photo…") { choosePortrait() }
-			if portrait != nil {
-				Button("Remove Photo", role: .destructive) { setPortrait(nil) }
+			if avatar.isCustomized {
+				Button("Remove Avatar", role: .destructive) { setAvatarPreset(nil) }
 			}
 		}
 		.onHover { hovering = $0 }
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel("Enrolled face, \(face.name)")
 		.accessibilityAction(named: Text("Remove \(face.name)"), remove)
-		.accessibilityAction(named: Text("Choose a photo for \(face.name)"), choosePortrait)
+		.accessibilityAction(named: Text("Choose a photo for \(face.name)")) {
+			showingAvatarPicker = true
+		}
 	}
 
 	/// When the overlay actions exist at all.
@@ -205,13 +212,9 @@ struct FaceTile: View {
 	/// into the tile reveals the actions Tab will reach next. Pointer behaviour
 	/// is exactly as before.
 	private var controlsVisible: Bool {
-		hovering || isEditing || portraitFocused || removeFocused
+		hovering || isEditing || portraitFocused || removeFocused || showingAvatarPicker
 	}
 
-	/// One letter, or two when the name has a surname to take one from.
-	///
-	/// Taken from the committed `face.name` rather than the draft, so the tile does not
-	/// flicker through partial initials while somebody is retyping the name under it.
 	/// Opens the system picker and hands back what was chosen.
 	///
 	/// `NSOpenPanel` rather than a drop target or a `PhotosPicker`: this is a Mac, the file
@@ -228,13 +231,6 @@ struct FaceTile: View {
 			let image = NSImage(contentsOf: url)
 		else { return }
 		setPortrait(image)
-	}
-
-	private var initials: String {
-		let words = face.name.split(separator: " ").filter { !$0.isEmpty }
-		let letters = words.prefix(2).compactMap(\.first)
-		guard !letters.isEmpty else { return "?" }
-		return String(letters).uppercased()
 	}
 
 	private func commit() {

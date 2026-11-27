@@ -166,7 +166,7 @@ package final class FaceEnrollmentStore {
 	///
 	/// `@ObservationIgnored` matters: this is filled during body evaluation, and mutating
 	/// an observed property there is what turns a redraw into a redraw loop.
-	@ObservationIgnored private var portraitCache: [UUID: NSImage?] = [:]
+	@ObservationIgnored private var avatarCache: [UUID: FaceAvatar] = [:]
 	/// Set when a record exists but will not decrypt — enrolment is unusable and the UI
 	/// should say so rather than silently offering to enrol again.
 	package private(set) var isCorrupted = false
@@ -176,6 +176,7 @@ package final class FaceEnrollmentStore {
 	private let preferences: Preferences
 	private let defaults: UserDefaults
 	private let learnIntervalOverride: TimeInterval?
+	private let portraitsDirectoryURL: URL?
 	private let loadVault: (String) throws -> StoredFaceEnrollments?
 	private let storeVault: ([FaceEnrollment], String) throws -> Void
 	private let removeVault: (String) throws -> Void
@@ -247,6 +248,7 @@ package final class FaceEnrollmentStore {
 		preferences: Preferences = .shared,
 		defaults: UserDefaults = .standard,
 		learnInterval: TimeInterval? = nil,
+		portraitsDirectory: URL? = nil,
 		loadVault: ((String) throws -> StoredFaceEnrollments?)? = nil,
 		storeVault: (([FaceEnrollment], String) throws -> Void)? = nil,
 		removeVault: ((String) throws -> Void)? = nil,
@@ -256,6 +258,7 @@ package final class FaceEnrollmentStore {
 		self.preferences = preferences
 		self.defaults = defaults
 		self.learnIntervalOverride = learnInterval
+		self.portraitsDirectoryURL = portraitsDirectory
 		self.loadVault = loadVault ?? { try SecureVault.load(StoredFaceEnrollments.self, from: $0) }
 		self.storeVault = storeVault ?? { try SecureVault.store($0, as: $1) }
 		self.removeVault = removeVault ?? { try SecureVault.remove($0) }
@@ -415,13 +418,10 @@ package final class FaceEnrollmentStore {
 		faces.removeAll { $0.id == id }
 		do {
 			try persist()
-			// The picture goes with the face. Leaving it behind orphaned a PNG in
-			// Application Support for every face ever deleted, and it is someone's
-			// photograph — deleting the enrolment should not quietly keep it.
-			if let url = Self.portraitURL(for: id) {
-				try? FileManager.default.removeItem(at: url)
-			}
-			portraitCache[id] = nil
+			// The picture and any avatar preset go with the face. Leaving them behind
+			// orphaned files in Application Support for every face ever deleted.
+			removeAvatarFiles(for: id)
+			avatarCache[id] = nil
 		} catch {
 			faces = previous
 		}
@@ -430,11 +430,9 @@ package final class FaceEnrollmentStore {
 	package func removeAll() throws {
 		try removeVault(Self.account)
 		for face in faces {
-			if let url = Self.portraitURL(for: face.id) {
-				try? FileManager.default.removeItem(at: url)
-			}
+			removeAvatarFiles(for: face.id)
 		}
-		portraitCache.removeAll()
+		avatarCache.removeAll()
 		faces = []
 		isCorrupted = false
 	}
@@ -499,16 +497,94 @@ extension FaceEnrollmentStore {
 		portraitsDirectory()?.appendingPathComponent("\(id.uuidString).png")
 	}
 
-	/// The portrait somebody chose for this face, if they chose one.
+	package static func avatarURL(for id: UUID) -> URL? {
+		portraitsDirectory()?.appendingPathComponent("\(id.uuidString).avatar.json")
+	}
+
+	private func resolvedPortraitsDirectory() -> URL? {
+		if let portraitsDirectoryURL {
+			try? FileManager.default.createDirectory(at: portraitsDirectoryURL, withIntermediateDirectories: true)
+			return portraitsDirectoryURL
+		}
+		return Self.portraitsDirectory()
+	}
+
+	private func portraitFileURL(for id: UUID) -> URL? {
+		resolvedPortraitsDirectory()?.appendingPathComponent("\(id.uuidString).png")
+	}
+
+	private func avatarFileURL(for id: UUID) -> URL? {
+		resolvedPortraitsDirectory()?.appendingPathComponent("\(id.uuidString).avatar.json")
+	}
+
+	private func removeAvatarFiles(for id: UUID) {
+		if let url = portraitFileURL(for: id) {
+			try? FileManager.default.removeItem(at: url)
+		}
+		if let url = avatarFileURL(for: id) {
+			try? FileManager.default.removeItem(at: url)
+		}
+	}
+
+	/// The resolved avatar for this face: a native Emoji/Monogram preset, a chosen
+	/// custom photo, or `.initials` for the default neutral initials circle.
 	///
 	/// Safe to call from a view body: after the first call per face it is a dictionary
-	/// lookup. The `fileExists` check that used to guard this is gone — `NSImage` already
-	/// returns nil for a file that is not there, so the extra `stat` bought nothing.
+	/// lookup. Corrupt or unrecognized preset files fall back gracefully without throwing.
+	package func avatar(for id: UUID) -> FaceAvatar {
+		if let cached = avatarCache[id] { return cached }
+
+		if let url = avatarFileURL(for: id),
+			let data = try? Data(contentsOf: url),
+			let rawPreset = try? JSONDecoder().decode(FaceAvatarPreset.self, from: data),
+			let preset = rawPreset.normalized()
+		{
+			let resolved: FaceAvatar = .preset(preset)
+			avatarCache[id] = resolved
+			return resolved
+		}
+
+		if let url = portraitFileURL(for: id), let image = NSImage(contentsOf: url) {
+			let resolved: FaceAvatar = .photo(image)
+			avatarCache[id] = resolved
+			return resolved
+		}
+
+		avatarCache[id] = .initials
+		return .initials
+	}
+
+	/// The custom photo somebody chose for this face, if they chose one.
 	package func portrait(for id: UUID) -> NSImage? {
-		if let cached = portraitCache[id] { return cached }
-		let loaded = Self.portraitURL(for: id).flatMap { NSImage(contentsOf: $0) }
-		portraitCache[id] = loaded
-		return loaded
+		avatar(for: id).photo
+	}
+
+	/// Stores a native Emoji or Monogram preset, or clears the avatar when handed nil.
+	///
+	/// Mutually exclusive with a custom photo: writing a preset removes any previous
+	/// `<id>.png` so disk state stays unambiguous. Invalid presets (such as blank or
+	/// non-emoji symbols) are ignored without disturbing existing disk state.
+	package func setAvatarPreset(_ preset: FaceAvatarPreset?, for id: UUID) {
+		guard let preset else {
+			removeAvatarFiles(for: id)
+			avatarCache[id] = .initials
+			portraitRevision &+= 1
+			return
+		}
+		guard let normalized = preset.normalized(),
+			let url = avatarFileURL(for: id),
+			let data = try? JSONEncoder().encode(normalized)
+		else { return }
+		do {
+			try data.write(to: url, options: .atomic)
+		} catch {
+			return
+		}
+		if let photoURL = portraitFileURL(for: id) {
+			try? FileManager.default.removeItem(at: photoURL)
+		}
+		avatarCache[id] = .preset(normalized)
+		portraitRevision &+= 1
 	}
 
 	/// Stores a portrait, or clears it when handed nil.
@@ -518,22 +594,23 @@ extension FaceEnrollmentStore {
 	/// original would put megabytes on disk and decode them on every settings redraw for a
 	/// picture that can never show the detail.
 	package func setPortrait(_ image: NSImage?, for id: UUID) {
-		guard let url = Self.portraitURL(for: id) else { return }
+		guard let url = portraitFileURL(for: id) else { return }
 		guard let image else {
-			try? FileManager.default.removeItem(at: url)
+			removeAvatarFiles(for: id)
 			// Cached as a known absence, not simply dropped — dropping it would send the
 			// next read back to the filesystem for a file we just deleted.
-			portraitCache[id] = .some(nil)
+			avatarCache[id] = .initials
 			portraitRevision &+= 1
 			return
 		}
 
 		let side = 256.0
+		let source = image.size
+		guard source.width > 0, source.height > 0 else { return }
 		let target = NSImage(size: NSSize(width: side, height: side))
 		target.lockFocus()
 		// Aspect-fill into a square: portraits are people, and letterboxing a face inside a
 		// tile looks like a mistake rather than a choice.
-		let source = image.size
 		let scale = max(side / source.width, side / source.height)
 		let drawn = NSSize(width: source.width * scale, height: source.height * scale)
 		image.draw(
@@ -547,10 +624,17 @@ extension FaceEnrollmentStore {
 			let rep = NSBitmapImageRep(data: tiff),
 			let png = rep.representation(using: .png, properties: [:])
 		else { return }
-		try? png.write(to: url)
+		do {
+			try png.write(to: url, options: .atomic)
+		} catch {
+			return
+		}
+		if let presetURL = avatarFileURL(for: id) {
+			try? FileManager.default.removeItem(at: presetURL)
+		}
 		// The downsampled copy is exactly what the tile draws, so cache it here rather than
 		// letting the next body evaluation read and decode the file we just wrote.
-		portraitCache[id] = target
+		avatarCache[id] = .photo(target)
 		portraitRevision &+= 1
 	}
 }

@@ -194,7 +194,7 @@ struct SettingsUnlockPane: View {
 					let _ = store.portraitRevision
 					FaceTile(
 						face: face,
-						portrait: store.portrait(for: face.id),
+						avatar: store.avatar(for: face.id),
 						isEnabled: Binding(
 							get: { store.faces.first(where: { $0.id == face.id })?.isEnabled ?? face.isEnabled },
 							set: { enabled in
@@ -213,6 +213,7 @@ struct SettingsUnlockPane: View {
 							}),
 						rename: { store.rename(face.id, to: $0) },
 						setPortrait: { store.setPortrait($0, for: face.id) },
+						setAvatarPreset: { store.setAvatarPreset($0, for: face.id) },
 						remove: {
 							Task {
 								guard await BiometricGate.authorize(.removeEnrollment) else { return }
