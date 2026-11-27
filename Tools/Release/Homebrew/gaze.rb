@@ -11,11 +11,12 @@ cask "gaze" do
 
   on_arm do
     sha256 :no_check
+
     url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-14-arm64.dmg"
   end
-
   on_intel do
     sha256 :no_check
+
     url "https://github.com/pearleseed/Gaze/releases/download/v#{version}/Gaze-#{version}-14-x86_64.dmg"
   end
 
