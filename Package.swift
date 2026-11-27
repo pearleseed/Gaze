@@ -80,23 +80,23 @@ let package = Package(
 		),
 		.testTarget(
 			name: "GazeCameraTests",
-			dependencies: ["GazeCamera", "GazeCore"],
+			dependencies: ["GazeCamera", "GazeCore", "GazeRecognition"],
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
 		.testTarget(
 			name: "GazeRecognitionTests",
-			dependencies: ["GazeRecognition", "GazeCamera", "GazeCore"],
+			dependencies: ["GazeRecognition", "GazeCamera", "GazeCore", "GazeSecurity", "GazeApp"],
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
 		.testTarget(
 			name: "GazeCoreTests",
-			dependencies: ["GazeCore", "GazeSecurity", "GazeApp"],
+			dependencies: ["GazeCore", "GazeCamera", "GazeRecognition", "GazeSecurity", "GazeUpdates", "GazeApp"],
 			path: "Tests/GazeCoreTests",
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),
 		.testTarget(
 			name: "GazeSecurityTests",
-			dependencies: ["GazeSecurity", "GazeCore", "GazeCamera", "GazeRecognition", "GazeLockScreen"],
+			dependencies: ["GazeSecurity", "GazeCore", "GazeCamera", "GazeRecognition", "GazeLockScreen", "GazeUpdates"],
 			path: "Tests/GazeSecurityTests",
 			swiftSettings: [.swiftLanguageMode(.v6)]
 		),

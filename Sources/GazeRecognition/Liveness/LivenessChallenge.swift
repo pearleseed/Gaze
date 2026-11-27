@@ -102,6 +102,9 @@ package final class LivenessChallenge {
 
 	/// Test hook; the lock screen uses the real clock.
 	package var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+	/// Injectable pupil/iris measurement hooks; default to production `PupilLocator`.
+	@ObservationIgnored package var eyeWidthProvider: (FaceSample) -> Double? = PupilLocator.eyeWidthPixels
+	@ObservationIgnored package var pupilGazeProvider: (FaceSample) -> (x: Double, y: Double?)? = PupilLocator.gaze
 	internal var ownLookOrigin: TimeInterval?
 	internal var lookCycle: Int?
 	internal var lookCycleValid = true
@@ -251,7 +254,7 @@ package final class LivenessChallenge {
 
 	package func prepareBaseline(_ sample: FaceSample) {
 		avoidLookWhenFar(sample)
-		let eyes2D = action.isLook ? PupilLocator.gaze(sample) : nil
+		let eyes2D = action.isLook ? pupilGazeProvider(sample) : nil
 		frameGazeY = eyes2D?.y
 		prepareBaseline(yaw: sample.pose.yaw, pitch: sample.pose.pitch,
 			yawSource: sample.pose.yawSource, pitchSource: sample.pose.pitchSource,
@@ -295,7 +298,7 @@ package final class LivenessChallenge {
 	@discardableResult
 	package func consume(_ sample: FaceSample) -> ConsumeResult {
 		avoidLookWhenFar(sample)
-		let eyes2D = action.isLook ? PupilLocator.gaze(sample) : nil
+		let eyes2D = action.isLook ? pupilGazeProvider(sample) : nil
 		frameGazeY = eyes2D?.y
 		return consumeFrame(yaw: sample.pose.yaw, pitch: sample.pose.pitch,
 			yawSource: sample.pose.yawSource, pitchSource: sample.pose.pitchSource,

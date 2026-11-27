@@ -172,7 +172,14 @@ package final class FaceEnrollmentStore {
 	package private(set) var isCorrupted = false
 	private var isAddingFace = false
 
-	private let baseEmbedder: any FaceEmbedder = Embedders.best()
+	private let baseEmbedder: any FaceEmbedder
+	private let preferences: Preferences
+	private let defaults: UserDefaults
+	private let learnIntervalOverride: TimeInterval?
+	private let loadVault: (String) throws -> StoredFaceEnrollments?
+	private let storeVault: ([FaceEnrollment], String) throws -> Void
+	private let removeVault: (String) throws -> Void
+	private let authorizeAdd: () async -> Bool
 
 	/// Base embedder with the Settings sensitivity offset on its threshold.
 	///
@@ -184,8 +191,8 @@ package final class FaceEnrollmentStore {
 			base: baseEmbedder,
 			// Far detection accepts smaller faces, whose prints are noisier, so it asks
 			// for a slightly closer match.
-			offset: Preferences.shared.recognitionSensitivity.thresholdOffset
-				+ Preferences.shared.detectionDistance.thresholdOffset)
+			offset: preferences.recognitionSensitivity.thresholdOffset
+				+ preferences.detectionDistance.thresholdOffset)
 	}
 
 	package var isEnrolled: Bool { !faces.isEmpty }
@@ -235,7 +242,24 @@ package final class FaceEnrollmentStore {
 		return nil
 	}
 
-	package init() {
+	package init(
+		baseEmbedder: (any FaceEmbedder)? = nil,
+		preferences: Preferences = .shared,
+		defaults: UserDefaults = .standard,
+		learnInterval: TimeInterval? = nil,
+		loadVault: ((String) throws -> StoredFaceEnrollments?)? = nil,
+		storeVault: (([FaceEnrollment], String) throws -> Void)? = nil,
+		removeVault: ((String) throws -> Void)? = nil,
+		authorizeAdd: (() async -> Bool)? = nil
+	) {
+		self.baseEmbedder = baseEmbedder ?? Embedders.best()
+		self.preferences = preferences
+		self.defaults = defaults
+		self.learnIntervalOverride = learnInterval
+		self.loadVault = loadVault ?? { try SecureVault.load(StoredFaceEnrollments.self, from: $0) }
+		self.storeVault = storeVault ?? { try SecureVault.store($0, as: $1) }
+		self.removeVault = removeVault ?? { try SecureVault.remove($0) }
+		self.authorizeAdd = authorizeAdd ?? { await BiometricGate.require(.addEnrollment) }
 		load()
 	}
 
@@ -244,7 +268,7 @@ package final class FaceEnrollmentStore {
 			// One vault read. `StoredFaceEnrollments` accepts both the list shape
 			// and the legacy single record, so a second read is never needed to
 			// tell an upgrade apart from damage.
-			guard let stored = try SecureVault.load(StoredFaceEnrollments.self, from: Self.account) else {
+			guard let stored = try loadVault(Self.account) else {
 				faces = []
 				return
 			}
@@ -272,7 +296,7 @@ package final class FaceEnrollmentStore {
 	}
 
 	private func persist() throws {
-		try SecureVault.store(faces, as: Self.account)
+		try storeVault(faces, Self.account)
 		isCorrupted = false
 	}
 
@@ -284,7 +308,7 @@ package final class FaceEnrollmentStore {
 		guard canAddFace else { throw EnrollmentError.full }
 		isAddingFace = true
 		defer { isAddingFace = false }
-		guard await BiometricGate.require(.addEnrollment) else {
+		guard await authorizeAdd() else {
 			throw EnrollmentError.notAuthorized
 		}
 		try Task.checkCancellation()
@@ -366,8 +390,9 @@ package final class FaceEnrollmentStore {
 		// One print a day: enough to follow a new haircut or season, and an encrypted
 		// vault write on every unlock was wasted work.
 		let learnedKey = "lastLearned.\(faceID.uuidString)"
-		if let last = UserDefaults.standard.object(forKey: learnedKey) as? Date,
-			Date().timeIntervalSince(last) < Self.learnInterval { return }
+		let interval = learnIntervalOverride ?? Self.learnInterval
+		if let last = defaults.object(forKey: learnedKey) as? Date,
+			Date().timeIntervalSince(last) < interval { return }
 		// Anchored to the standard threshold, not the sensitivity-adjusted one, so a
 		// Relaxed setting can never teach Gaze a weaker print of the face.
 		let anchor = max(baseEmbedder.matchThreshold, embedder.matchThreshold) + 0.05
@@ -381,7 +406,7 @@ package final class FaceEnrollmentStore {
 		faces[index] = updated
 		do {
 			try persist()
-			UserDefaults.standard.set(Date(), forKey: learnedKey)
+			defaults.set(Date(), forKey: learnedKey)
 		} catch { faces[index] = previous }
 	}
 
@@ -403,7 +428,7 @@ package final class FaceEnrollmentStore {
 	}
 
 	package func removeAll() throws {
-		try SecureVault.remove(Self.account)
+		try removeVault(Self.account)
 		for face in faces {
 			if let url = Self.portraitURL(for: face.id) {
 				try? FileManager.default.removeItem(at: url)

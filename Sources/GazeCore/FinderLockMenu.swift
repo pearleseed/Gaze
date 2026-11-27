@@ -1,17 +1,16 @@
 import Foundation
-import GazeCore
 
-/// The Finder's contextual-menu decision. Foundation-only so the app tests
-/// compile it unchanged; the extension links it alongside AppLockStore.
-enum FinderLockMenu {
+/// The Finder's contextual-menu decision. Foundation-only in GazeCore so the
+/// Finder extension and tests share the exact same implementation.
+public enum FinderLockMenu {
 
-	static let toggleScheme = AppIdentity.urlScheme
-	static let toggleHost = "app-lock"
-	static let togglePath = "/toggle"
+	public static let toggleScheme = AppIdentity.urlScheme
+	public static let toggleHost = "app-lock"
+	public static let togglePath = "/toggle"
 
 	/// The menu title for a selection, or nil when no item applies: anything
 	/// but one app, or an app that can never be locked.
-	static func title(selectedCount: Int, appBundleID: String?, isLocked: Bool) -> String? {
+	public static func title(selectedCount: Int, appBundleID: String?, isLocked: Bool) -> String? {
 		guard selectedCount == 1, let bundleID = appBundleID, !bundleID.isEmpty,
 			!AppLockStore.isNeverLockable(bundleID)
 		else { return nil }
@@ -19,12 +18,12 @@ enum FinderLockMenu {
 	}
 
 	/// The selection's bundle ID when it is a single .app, else nil.
-	static func bundleID(forAppURL url: URL) -> String? {
+	public static func bundleID(forAppURL url: URL) -> String? {
 		guard url.pathExtension == "app" else { return nil }
 		return Bundle(url: url)?.bundleIdentifier
 	}
 
-	static func toggleURL(for bundleID: String) -> URL? {
+	public static func toggleURL(for bundleID: String) -> URL? {
 		var parts = URLComponents()
 		parts.scheme = toggleScheme
 		parts.host = toggleHost
@@ -34,8 +33,8 @@ enum FinderLockMenu {
 	}
 
 	/// The bundle ID from a well-formed toggle URL, else nil. Mirrored by
-	/// AppLockURLAction on the app side, which cannot link this target.
-	static func bundleID(fromToggleURL url: URL) -> String? {
+	/// AppLockURLAction on the app side.
+	public static func bundleID(fromToggleURL url: URL) -> String? {
 		guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
 			parts.scheme?.lowercased() == toggleScheme,
 			parts.host?.lowercased() == toggleHost,

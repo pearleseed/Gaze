@@ -6,6 +6,8 @@ import Observation
 package final class LockScanDiagnostics {
 	package static let shared = LockScanDiagnostics()
 
+	package init() {}
+
 	package enum Outcome: CaseIterable, Sendable {
 		case starting, scanning, movement, manualInput, cameraUnavailable, firstFrameTimeout, cameraStalled
 		case verificationUnavailable, notRecognized, challengeExpired, spoofRejected, ended, scanOnlyPassed

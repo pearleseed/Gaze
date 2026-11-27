@@ -569,11 +569,13 @@ struct ReleaseUpdateCheckerTests {
 
 		try await withChecker(startupDelay: .milliseconds(20)) { checker, defaults in
 			checker.startScheduledChecks()
+			defer { checker.stopScheduledChecks() }
 			for _ in 0..<200 {
-				if checker.state == .checking { break }
+				if checker.state == .checking && !MockGitHubProtocol.requests.isEmpty { break }
 				try await Task.sleep(for: .milliseconds(10))
 			}
 			#expect(checker.state == .checking)
+			#expect(MockGitHubProtocol.requests.count == 1)
 			checker.stopScheduledChecks()
 			for _ in 0..<200 {
 				if checker.state != .checking { break }
@@ -581,6 +583,149 @@ struct ReleaseUpdateCheckerTests {
 			}
 			#expect(checker.state == .idle)
 			#expect(defaults.object(forKey: "lastReleaseCheck") == nil)
+			checker.stopScheduledChecks()
+		}
+	}
+
+	@Test func startScheduledChecksCalledTwiceIssuesOneRequest() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker(startupDelay: .milliseconds(20)) { checker, defaults in
+			checker.startScheduledChecks()
+			checker.startScheduledChecks()
+			defer { checker.stopScheduledChecks() }
+			for _ in 0..<300 {
+				if case .available = checker.state { break }
+				try await Task.sleep(for: .milliseconds(10))
+			}
+			guard case .available = checker.state else {
+				Issue.record("Expected available release, got \(checker.state)")
+				return
+			}
+			#expect(MockGitHubProtocol.requests.count == 1)
+			#expect(defaults.object(forKey: "lastReleaseCheck") is Date)
+		}
+	}
+
+	@Test func stopScheduledChecksBeforeDelayIssuesNoRequest() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker(startupDelay: .seconds(30)) { checker, _ in
+			checker.startScheduledChecks()
+			checker.stopScheduledChecks()
+			checker.stopScheduledChecks()
+			try await Task.sleep(for: .milliseconds(200))
+			#expect(MockGitHubProtocol.requests.isEmpty)
+			#expect(checker.state == .idle)
+		}
+	}
+
+	@Test func restartScheduledChecksAfterStopChecksAgain() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker(startupDelay: .milliseconds(25)) { checker, defaults in
+			checker.startScheduledChecks()
+			checker.stopScheduledChecks()
+			defer { checker.stopScheduledChecks() }
+			try await Task.sleep(for: .milliseconds(150))
+			#expect(MockGitHubProtocol.requests.isEmpty)
+
+			checker.startScheduledChecks()
+			for _ in 0..<300 {
+				if case .available = checker.state { break }
+				try await Task.sleep(for: .milliseconds(10))
+			}
+			guard case .available = checker.state else {
+				Issue.record("Expected available release after restart, got \(checker.state)")
+				return
+			}
+			#expect(MockGitHubProtocol.requests.count == 1)
+			#expect(defaults.object(forKey: "lastReleaseCheck") is Date)
+		}
+	}
+
+	@Test func independentInstancesScheduleIndependentlyWithoutTouchingShared() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker(startupDelay: .milliseconds(20)) { first, firstDefaults in
+			try await withChecker(startupDelay: .milliseconds(20)) { second, secondDefaults in
+				first.startScheduledChecks()
+				second.startScheduledChecks()
+				defer {
+					first.stopScheduledChecks()
+					second.stopScheduledChecks()
+				}
+				for _ in 0..<300 {
+					if case .available = first.state, case .available = second.state { break }
+					try await Task.sleep(for: .milliseconds(10))
+				}
+				guard case .available = first.state, case .available = second.state else {
+					Issue.record("Expected both instances to offer update: first=\(first.state), second=\(second.state)")
+					return
+				}
+				#expect(MockGitHubProtocol.requests.count == 2)
+				#expect(firstDefaults.object(forKey: "lastReleaseCheck") is Date)
+				#expect(secondDefaults.object(forKey: "lastReleaseCheck") is Date)
+				#expect(ReleaseUpdateChecker.shared.state == .idle)
+			}
+		}
+	}
+
+	@Test func futureTimestampStillChecksAndReplacesClockJumpTimestamp() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker { checker, defaults in
+			let future = Date(timeIntervalSinceNow: 60 * 60 * 24 * 30)
+			defaults.set(future, forKey: "lastReleaseCheck")
+			await checker.checkIfDue()
+			#expect(MockGitHubProtocol.requests.count == 1)
+			guard case .available = checker.state else {
+				Issue.record("Expected available release for future-timestamp check, got \(checker.state)")
+				return
+			}
+			let stored = try #require(defaults.object(forKey: "lastReleaseCheck") as? Date)
+			#expect(stored < future)
+			#expect(abs(Date().timeIntervalSince(stored)) < 120)
+		}
+	}
+
+	@Test func recentTimestampSkipsAutomaticCheck() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker { checker, defaults in
+			defaults.set(Date(), forKey: "lastReleaseCheck")
+			await checker.checkIfDue()
+			#expect(MockGitHubProtocol.requests.isEmpty)
+			#expect(checker.state == .idle)
+		}
+	}
+
+	@Test func availableStateSkipsDueCheckEvenWithFutureTimestamp() async throws {
+		let payload = try githubReleaseJSON(tag: "v9.9.9")
+		MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+
+		try await withChecker { checker, defaults in
+			await checker.check()
+			guard case .available = checker.state else {
+				Issue.record("Expected available release, got \(checker.state)")
+				return
+			}
+			#expect(MockGitHubProtocol.requests.count == 1)
+
+			defaults.set(Date(timeIntervalSinceNow: 60 * 60 * 24 * 30), forKey: "lastReleaseCheck")
+			MockGitHubProtocol.reset { _ in .init(status: 200, body: payload) }
+			await checker.checkIfDue()
+			#expect(MockGitHubProtocol.requests.isEmpty)
+			guard case .available = checker.state else {
+				Issue.record("Expected available state to survive skipped due-check, got \(checker.state)")
+				return
+			}
 		}
 	}
 

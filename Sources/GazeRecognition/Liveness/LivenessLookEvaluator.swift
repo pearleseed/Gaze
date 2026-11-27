@@ -83,7 +83,7 @@ extension LivenessChallenge {
 	/// Swaps Follow the light for another movement when the face is too far for it.
 	/// Checked before the prompt shows, so a far-away person never sees it at all.
 	internal func avoidLookWhenFar(_ sample: FaceSample) {
-		guard action.isLook, let eyeWidth = PupilLocator.eyeWidthPixels(sample),
+		guard action.isLook, let eyeWidth = eyeWidthProvider(sample),
 			eyeWidth < Self.lookMinEyeWidth else { return }
 		lookPassLog.append("too far for Follow the light (eyes \(Int(eyeWidth)) px); switched movement")
 		action = fallbackAction()
