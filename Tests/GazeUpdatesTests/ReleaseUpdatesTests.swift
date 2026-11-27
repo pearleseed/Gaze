@@ -745,6 +745,28 @@ struct ReleaseUpdateCheckerTests {
 			#expect(defaults.object(forKey: "lastReleaseCheck") == nil)
 		}
 	}
+
+	@Test func releaseUpdateCheckerSourceWiringInvariants() throws {
+		let root = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		#expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Package.swift").path))
+
+		let checkerSource = try String(
+			contentsOf: root.appendingPathComponent("Sources/GazeUpdates/ReleaseUpdateChecker.swift"),
+			encoding: .utf8
+		)
+
+		// Schedule must remain instance-owned, stoppable, and weakly capture self on the timer.
+		#expect(!checkerSource.contains("ReleaseUpdateChecker.shared"))
+		#expect(checkerSource.contains("func stopScheduledChecks"))
+		#expect(checkerSource.contains("[weak self]"))
+
+		let timerRange = try #require(checkerSource.range(of: "Timer.scheduledTimer("))
+		let timerSnippet = String(checkerSource[timerRange.lowerBound...].prefix(300))
+		#expect(timerSnippet.contains("{ [weak self] _ in"))
+	}
 }
 
 @Suite("Update Installer Verification & Policy")
